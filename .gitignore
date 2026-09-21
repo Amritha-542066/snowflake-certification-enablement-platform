@@ -1,0 +1,20 @@
+# Snowflake credentials and private keys
+connections.toml
+*.key
+*.pem
+.env
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Python-generated files
+__pycache__/
+*.pyc
+
+# VS Code local settings
+.vscode/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
