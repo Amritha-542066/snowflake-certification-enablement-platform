@@ -1,0 +1,32 @@
+TOPIC_ID,DOMAIN_ID,TOPIC_NAME,TOPIC_DESCRIPTION,DIFFICULTY_LEVEL,ESTIMATED_HOURS,TOPIC_ORDER
+D01_T01,DOMAIN_01,Snowflake AI Data Cloud Overview,Understand Snowflake workloads editions and major platform capabilities,BEGINNER,2,1
+D01_T02,DOMAIN_01,Snowflake Architecture,Understand the storage compute and cloud services layers,BEGINNER,3,2
+D01_T03,DOMAIN_01,Object Hierarchy,Understand organizations accounts databases schemas and objects,BEGINNER,2,3
+D01_T04,DOMAIN_01,Table Types and Formats,Study permanent transient temporary external hybrid dynamic and Iceberg tables,INTERMEDIATE,4,4
+D01_T05,DOMAIN_01,Micro-partitions and Storage,Understand columnar storage metadata pruning and clustering,INTERMEDIATE,3,5
+D01_T06,DOMAIN_01,Snowflake Interfaces and Developer Tools,Study Snowsight CLI drivers connectors Snowpark notebooks and Git integration,INTERMEDIATE,3,6
+D01_T07,DOMAIN_01,Cortex AI Fundamentals,Understand Cortex AI functions Cortex Analyst and AI platform capabilities,BEGINNER,3,7
+D02_T01,DOMAIN_02,SQL Querying Fundamentals,Practice SELECT filtering joins grouping sorting and set operations,BEGINNER,4,8
+D02_T02,DOMAIN_02,SQL Functions and Advanced Queries,Study window functions CTEs subqueries and built-in functions,INTERMEDIATE,4,9
+D02_T03,DOMAIN_02,Semi-structured Data Transformation,Work with VARIANT JSON path expressions and FLATTEN,INTERMEDIATE,4,10
+D02_T04,DOMAIN_02,Query Profile and Execution,Use Query Profile to identify bottlenecks and expensive operations,INTERMEDIATE,3,11
+D02_T05,DOMAIN_02,Caching Pruning and Clustering,Understand result cache warehouse cache pruning and clustering keys,INTERMEDIATE,3,12
+D02_T06,DOMAIN_02,Warehouse Performance and Scaling,Study warehouse sizing multi-cluster scaling concurrency and auto-suspend,INTERMEDIATE,3,13
+D02_T07,DOMAIN_02,Streams Tasks and Dynamic Tables,Understand incremental processing task scheduling and managed transformations,ADVANCED,4,14
+D03_T01,DOMAIN_03,Role-Based Access Control,Understand roles privileges grants inheritance and least privilege,INTERMEDIATE,4,15
+D03_T02,DOMAIN_03,Authentication and Network Security,Study MFA SSO key-pair authentication network policies and private connectivity,INTERMEDIATE,3,16
+D03_T03,DOMAIN_03,Account User and Role Administration,Manage users roles parameters sessions and account-level configuration,INTERMEDIATE,3,17
+D03_T04,DOMAIN_03,Data Governance Policies,Study masking policies row access policies tags and classification,ADVANCED,4,18
+D03_T05,DOMAIN_03,Metadata Monitoring and Auditing,Use ACCOUNT_USAGE INFORMATION_SCHEMA ACCESS_HISTORY and query history,INTERMEDIATE,3,19
+D03_T06,DOMAIN_03,Cost Monitoring and Controls,Study resource monitors budgets warehouse usage and cost optimization,INTERMEDIATE,3,20
+D04_T01,DOMAIN_04,Stages and File Formats,Understand internal external and table stages with supported file formats,BEGINNER,3,21
+D04_T02,DOMAIN_04,Bulk Data Loading,Load structured and semi-structured files using COPY INTO tables,INTERMEDIATE,4,22
+D04_T03,DOMAIN_04,Load Validation and Error Handling,Use validation modes load history and COPY error-handling options,INTERMEDIATE,3,23
+D04_T04,DOMAIN_04,Continuous Data Loading,Understand Snowpipe Snowpipe Streaming and automated ingestion,ADVANCED,4,24
+D04_T05,DOMAIN_04,Data Unloading,Unload query and table data to internal or external stages,INTERMEDIATE,2,25
+D04_T06,DOMAIN_04,Snowflake Connectivity,Understand connectors drivers APIs Snowflake CLI and client configuration,INTERMEDIATE,3,26
+D05_T01,DOMAIN_05,Secure Data Sharing,Understand providers consumers shares and shared database behavior,INTERMEDIATE,3,27
+D05_T02,DOMAIN_05,Listings and Marketplace,Understand private listings marketplace listings and data products,INTERMEDIATE,3,28
+D05_T03,DOMAIN_05,Reader Accounts and Managed Access,Understand reader accounts managed access and consumer permissions,INTERMEDIATE,2,29
+D05_T04,DOMAIN_05,Time Travel Fail-safe and Cloning,Understand data recovery retention Fail-safe and zero-copy cloning,INTERMEDIATE,3,30
+D05_T05,DOMAIN_05,Replication and Failover,Understand database replication failover groups and business continuity,ADVANCED,3,31
