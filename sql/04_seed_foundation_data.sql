@@ -62,9 +62,9 @@ USING (
         COLUMN7 AS DISPLAY_ORDER
     FROM VALUES
         ('FRESHER', 'Fresher', 0.0, 0.0, 12, 8, 1),
-        ('EXP_0_5', '0-5 Years Experience', 0.1, 5.0, 10, 7, 2),
-        ('EXP_5_9', '5-9 Years Experience', 5.1, 9.0, 8, 6, 3),
-        ('EXP_9_PLUS', '9+ Years Experience', 9.1, NULL, 6, 5, 4)
+        ('EXP_0_5', '0-5 Years Snowflake Experience', 0.1, 5.0, 10, 7, 2),
+        ('EXP_5_9', '5-9 Years Snowflake Experience', 5.1, 9.0, 8, 6, 3),
+        ('EXP_9_PLUS', '9+ Years Snowflake Experience', 9.1, NULL, 6, 5, 4)
 ) AS SOURCE
 ON TARGET.EXPERIENCE_LEVEL_CODE = SOURCE.EXPERIENCE_LEVEL_CODE
 WHEN MATCHED THEN UPDATE SET

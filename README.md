@@ -20,11 +20,11 @@ The platform provides a structured study plan, recommended learning resources, e
 The learning timelines will be configurable for:
 
 - Fresher
-- 0–5 years of experience
-- 5–9 years of experience
-- 9+ years of experience
+- 0–5 years Snowflake of experience
+- 5–9 years Snowflake of experience
+- 9+ years of Snowflake experience
 
-The timelines can be reviewed and adjusted based on learner feedback and experience.
+The timelines can be reviewed and adjusted based on learner feedback and experience. The learning timelines are assigned using each learner's Snowflake-specific experience, not their total IT experience.
 
 ## High-Level Data Flow
 
