@@ -1,0 +1,268 @@
+/*==============================================================================
+  SnowPro Core Enablement Platform
+  Step 19: Role-based access control
+
+  Roles:
+  - SNOWPRO_LEARNER
+  - SNOWPRO_PROGRAM_MANAGER
+  - SNOWPRO_PLATFORM_ADMIN
+
+  User assignments are intentionally excluded from Git.
+==============================================================================*/
+
+USE ROLE ACCOUNTADMIN;
+
+
+/*------------------------------------------------------------------------------
+  1. Create the platform roles
+------------------------------------------------------------------------------*/
+
+CREATE ROLE IF NOT EXISTS SNOWPRO_LEARNER;
+
+CREATE ROLE IF NOT EXISTS SNOWPRO_PROGRAM_MANAGER;
+
+CREATE ROLE IF NOT EXISTS SNOWPRO_PLATFORM_ADMIN;
+
+
+/*------------------------------------------------------------------------------
+  2. Create the role hierarchy
+
+  PLATFORM_ADMIN
+        ↓
+  PROGRAM_MANAGER
+        ↓
+  LEARNER
+------------------------------------------------------------------------------*/
+
+GRANT ROLE SNOWPRO_LEARNER
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT ROLE SNOWPRO_PROGRAM_MANAGER
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ROLE SNOWPRO_PLATFORM_ADMIN
+TO ROLE SYSADMIN;
+
+
+/*------------------------------------------------------------------------------
+  3. Common warehouse and database access
+------------------------------------------------------------------------------*/
+
+GRANT USAGE
+ON WAREHOUSE SNOWPRO_LEARNING_WH
+TO ROLE SNOWPRO_LEARNER;
+
+GRANT USAGE
+ON WAREHOUSE SNOWPRO_LEARNING_WH
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT USAGE, OPERATE, MONITOR
+ON WAREHOUSE SNOWPRO_LEARNING_WH
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT USAGE
+ON DATABASE SNOWPRO_ENABLEMENT
+TO ROLE SNOWPRO_LEARNER;
+
+GRANT USAGE
+ON DATABASE SNOWPRO_ENABLEMENT
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT USAGE
+ON DATABASE SNOWPRO_ENABLEMENT
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+/*------------------------------------------------------------------------------
+  4. Learner permissions
+
+  Learners can:
+  - View the common weekly study plans.
+  - Record their learning activity through the controlled procedure.
+
+  Learners are not given direct access to personal learner tables.
+------------------------------------------------------------------------------*/
+
+GRANT USAGE
+ON SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_LEARNER;
+
+GRANT USAGE
+ON SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_LEARNER;
+
+GRANT SELECT
+ON VIEW SNOWPRO_ENABLEMENT.ANALYTICS.V_WEEKLY_STUDY_PLAN
+TO ROLE SNOWPRO_LEARNER;
+
+GRANT USAGE
+ON PROCEDURE
+SNOWPRO_ENABLEMENT.CONTROL.RECORD_LEARNING_ACTIVITY(
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    NUMBER,
+    NUMBER,
+    VARCHAR
+)
+TO ROLE SNOWPRO_LEARNER;
+
+
+/*------------------------------------------------------------------------------
+  5. Program-manager permissions
+
+  Program managers can:
+  - View all analytics.
+  - Register learners.
+  - Record learning activities.
+  - Record and maintain assessment results.
+------------------------------------------------------------------------------*/
+
+GRANT USAGE
+ON SCHEMA SNOWPRO_ENABLEMENT.CORE
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT USAGE
+ON SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT USAGE
+ON SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+
+GRANT SELECT
+ON ALL VIEWS IN SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT SELECT
+ON FUTURE VIEWS IN SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+
+GRANT SELECT, INSERT, UPDATE
+ON TABLE SNOWPRO_ENABLEMENT.CORE.ASSESSMENT_RESULTS
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+
+GRANT USAGE
+ON PROCEDURE
+SNOWPRO_ENABLEMENT.CONTROL.REGISTER_LEARNER(
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    NUMBER
+)
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+GRANT USAGE
+ON PROCEDURE
+SNOWPRO_ENABLEMENT.CONTROL.RECORD_LEARNING_ACTIVITY(
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    NUMBER,
+    NUMBER,
+    VARCHAR
+)
+TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+
+/*------------------------------------------------------------------------------
+  6. Platform-administrator permissions
+------------------------------------------------------------------------------*/
+
+GRANT ALL PRIVILEGES
+ON SCHEMA SNOWPRO_ENABLEMENT.RAW
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON SCHEMA SNOWPRO_ENABLEMENT.CORE
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT ALL PRIVILEGES
+ON ALL TABLES IN SCHEMA SNOWPRO_ENABLEMENT.RAW
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON ALL TABLES IN SCHEMA SNOWPRO_ENABLEMENT.CORE
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON ALL TABLES IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT ALL PRIVILEGES
+ON FUTURE TABLES IN SCHEMA SNOWPRO_ENABLEMENT.RAW
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON FUTURE TABLES IN SCHEMA SNOWPRO_ENABLEMENT.CORE
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON FUTURE TABLES IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT ALL PRIVILEGES
+ON ALL VIEWS IN SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT ALL PRIVILEGES
+ON FUTURE VIEWS IN SCHEMA SNOWPRO_ENABLEMENT.ANALYTICS
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT USAGE
+ON ALL PROCEDURES IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT USAGE
+ON FUTURE PROCEDURES IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+GRANT OPERATE, MONITOR
+ON ALL TASKS IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+GRANT OPERATE, MONITOR
+ON FUTURE TASKS IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL
+TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+/*------------------------------------------------------------------------------
+  7. Verify the role grants
+------------------------------------------------------------------------------*/
+
+SHOW GRANTS TO ROLE SNOWPRO_LEARNER;
+
+SHOW GRANTS TO ROLE SNOWPRO_PROGRAM_MANAGER;
+
+SHOW GRANTS TO ROLE SNOWPRO_PLATFORM_ADMIN;
+
+
+/*------------------------------------------------------------------------------
+  Assign roles to actual users separately.
+
+  Do not add real usernames to this Git file.
+
+  Example only:
+
+  GRANT ROLE SNOWPRO_LEARNER TO USER <username>;
+  GRANT ROLE SNOWPRO_PROGRAM_MANAGER TO USER <username>;
+  GRANT ROLE SNOWPRO_PLATFORM_ADMIN TO USER <username>;
+------------------------------------------------------------------------------*/
