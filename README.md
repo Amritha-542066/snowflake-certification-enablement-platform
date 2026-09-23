@@ -1,59 +1,305 @@
 # SnowPro Core Enablement Platform
 
-## Project Overview
+## Overview
 
-The SnowPro Core Enablement Platform is a centralized learning and progress-tracking solution for employees preparing for the SnowPro Core Certification.
+The SnowPro Core Enablement Platform is a Snowflake-based learning platform for employees preparing for the SnowPro Core certification.
 
-The platform provides a structured study plan, recommended learning resources, experience-based timelines, and learner progress tracking.
+It provides structured learning paths based specifically on a learner's Snowflake experience and tracks their progress from registration to certification readiness.
 
-## Objectives
+The project is designed for multiple learners and supports continuous data processing, progress tracking, analytics, security and data-quality validation.
 
-- Organize all SnowPro Core exam topics.
-- Provide clear study plans for different experience levels.
-- Track each learner's topic completion and learning progress.
-- Continuously accept new learning content and learner activity.
-- Provide progress and readiness reports.
-- Keep all project code, data, documentation, and tests in Git.
+---
 
-## Experience Levels
+## Learning Paths
 
-The learning timelines will be configurable for:
+| Snowflake experience | Duration | Weekly study hours |
+|---|---:|---:|
+| Fresher | 12 weeks | 8 hours |
+| 0–5 years | 10 weeks | 7 hours |
+| 5–9 years | 8 weeks | 6 hours |
+| 9+ years | 6 weeks | 5 hours |
 
-- Fresher
-- 0–5 years Snowflake of experience
-- 5–9 years Snowflake of experience
-- 9+ years of Snowflake experience
+The learning timelines can be adjusted based on feedback and business requirements.
 
-The timelines can be reviewed and adjusted based on learner feedback and experience. The learning timelines are assigned using each learner's Snowflake-specific experience, not their total IT experience.
+---
 
-## High-Level Data Flow
+## Main Features
 
-1. Study-plan data and learner activities are loaded into the RAW schema.
-2. Snowflake Streams identify new or updated records.
-3. Snowflake Tasks process the records continuously.
-4. Validated data is stored in the CORE schema.
-5. ANALYTICS views provide learner progress and certification-readiness reports.
-6. The CONTROL schema stores pipeline logs and rejected records.
-
-## Snowflake Components
-
-- Database: `SNOWPRO_ENABLEMENT`
-- Schemas: `RAW`, `CORE`, `ANALYTICS`, and `CONTROL`
-- Tables for topics, learning paths, learners, enrollments, and progress
-- Streams and Tasks for continuous processing
-- Views for progress and readiness reporting
+- Experience-based SnowPro Core learning paths
+- Five certification exam domains
+- Thirty-one structured study topics
+- Weekly study schedules
+- Reusable learner-registration procedure
+- Automatic topic assignment
+- Topic-level progress tracking
+- Continuous learning-activity processing
+- Mock-assessment tracking
+- Certification-readiness analytics
 - Role-based access control
-- Data-quality validation queries
+- Repeatable data-quality tests
+- Git-based source control and documentation
+
+---
+
+## Architecture
+
+```text
+Study-topic CSV
+      ↓
+Internal Stage
+      ↓
+RAW Inbox
+      ↓
+Stream and Task
+      ↓
+Validation Procedure
+      ├── Valid records → CORE
+      └── Invalid records → CONTROL.REJECTED_RECORDS
+
+Learner Registration
+      ↓
+Experience-Based Learning Path
+      ↓
+Weekly Topic Schedule
+      ↓
+Learning Events
+      ↓
+Stream and Task
+      ↓
+Topic Progress
+      ↓
+Analytics and Readiness Views
+```
+
+---
+
+## Snowflake Objects
+
+### Warehouse
+
+```text
+SNOWPRO_LEARNING_WH
+```
+
+Configuration:
+
+- X-Small
+- Auto-suspend enabled
+- Auto-resume enabled
+
+### Database
+
+```text
+SNOWPRO_ENABLEMENT
+```
+
+### Schemas
+
+| Schema | Purpose |
+|---|---|
+| `RAW` | Incoming source data |
+| `CORE` | Validated certification and learner data |
+| `CONTROL` | Pipeline procedures, Tasks, logs and rejected records |
+| `ANALYTICS` | Progress, schedule and readiness views |
+
+---
 
 ## Repository Structure
 
-- `data/` – Sample and reference data
-- `docs/` – Architecture, study-plan, and demo documentation
-- `sql/` – Snowflake SQL deployment scripts
-- `tests/` – Data-quality and pipeline-validation queries
+```text
+snowpro-core-enablement-platform/
+├── data/
+│   └── study_topics.csv
+├── docs/
+│   ├── DEPLOYMENT_GUIDE.md
+│   └── DEMO_GUIDE.md
+├── sql/
+│   ├── 01_setup.sql
+│   ├── 02_reference_tables.sql
+│   ├── 03_learner_tracking_tables.sql
+│   ├── 04_seed_foundation_data.sql
+│   ├── 05_raw_ingestion_setup.sql
+│   ├── 06_load_study_topics.sql
+│   ├── 07_study_topics_pipeline.sql
+│   ├── 08_learner_registration.sql
+│   ├── 09_learning_schedule.sql
+│   ├── 10_learning_activity_pipeline.sql
+│   ├── 11_analytics_views.sql
+│   └── 12_rbac.sql
+├── tests/
+│   ├── 01_study_topics_pipeline_test.sql
+│   └── 02_platform_data_quality_tests.sql
+├── .gitignore
+└── README.md
+```
 
-## Current Scope
+---
 
-The current version focuses on the Snowflake database, study-plan data, progress tracking, pipeline processing, security, and reporting.
+## Continuous Data Pipelines
 
-A Streamlit user interface is not included in the current scope.
+### Study-Topic Pipeline
+
+```text
+CSV → Stage → RAW → Stream → Task → Validation → CORE
+```
+
+The pipeline:
+
+- Processes newly loaded study topics.
+- Moves valid records into CORE.
+- Stores invalid records with rejection reasons.
+- Records each pipeline execution.
+
+### Learning-Activity Pipeline
+
+```text
+Activity → Learning Events → Stream → Task → Topic Progress
+```
+
+The pipeline:
+
+- Records study time and completion percentage.
+- Detects new activities.
+- Updates learner progress automatically.
+- Maintains activity timestamps and completion status.
+
+---
+
+## Analytics Views
+
+| View | Purpose |
+|---|---|
+| `V_WEEKLY_STUDY_PLAN` | Weekly study schedule for each learning path |
+| `V_LEARNER_PROGRESS` | Overall learner progress and study hours |
+| `V_DOMAIN_PROGRESS` | Progress across the five exam domains |
+| `V_CERTIFICATION_READINESS` | Readiness score, status and recommendation |
+
+The readiness score is an internal learning indicator and is not a guarantee of certification success.
+
+---
+
+## Roles
+
+| Role | Purpose |
+|---|---|
+| `SNOWPRO_LEARNER` | View study plans and record activities |
+| `SNOWPRO_PROGRAM_MANAGER` | Register learners, maintain assessments and view analytics |
+| `SNOWPRO_PLATFORM_ADMIN` | Manage the complete platform |
+
+Actual Snowflake usernames are assigned to roles separately and are not stored in Git.
+
+---
+
+## Data Quality
+
+The platform includes two test files:
+
+```text
+tests/01_study_topics_pipeline_test.sql
+tests/02_platform_data_quality_tests.sql
+```
+
+The platform-level test file contains 12 checks covering:
+
+- Exam-domain weights
+- Learning-path availability
+- Topic assignments
+- Planned-week validation
+- Progress percentages and study hours
+- Orphan records
+- Duplicate learners
+- Duplicate enrollments
+- Assessment scores
+- Experience-level mapping
+
+Expected result:
+
+```text
+12 PASS
+0 FAIL
+```
+
+---
+
+## Deployment
+
+For the complete deployment order and instructions, see:
+
+```text
+docs/DEPLOYMENT_GUIDE.md
+```
+
+The SQL files are stored in Git and can be executed through Snowsight or Snowflake CLI.
+
+Real learner details and real Snowflake usernames must not be committed to the repository.
+
+---
+
+## Demo
+
+For the recommended presentation flow, see:
+
+```text
+docs/DEMO_GUIDE.md
+```
+
+The demo should primarily present the implementation from Git or VS Code.
+
+---
+
+## Technologies and Snowflake Features
+
+- Snowflake SQL
+- Virtual warehouses
+- Internal stages
+- CSV file formats
+- `COPY INTO`
+- Streams
+- Tasks
+- SQL stored procedures
+- `MERGE`
+- Views
+- Role-based access control
+- Future grants
+- Git and GitHub
+
+---
+
+## Current Limitations
+
+- Learner registration currently uses a stored-procedure call.
+- Assessment entry currently uses SQL.
+- Learning timelines may require adjustment after user feedback.
+- Streamlit is not included in the current phase.
+
+---
+
+## Future Enhancement
+
+After approval, a Streamlit application can provide:
+
+- Learner self-registration
+- Personalized weekly plans
+- Progress-update forms
+- Mock-assessment entry
+- Readiness dashboards
+- Role-based page visibility
+
+---
+
+## Project Status
+
+The Snowflake backend implementation is complete.
+
+Completed areas:
+
+- Environment setup
+- Certification data model
+- Continuous topic ingestion
+- Experience-based learning paths
+- Learner registration
+- Progress tracking
+- Analytics and readiness
+- RBAC
+- Data-quality testing
+- Deployment and demo documentation
