@@ -1,0 +1,3 @@
+SOURCE_RECORD_ID,EMPLOYEE_ID,LEARNER_NAME,EMAIL,DEPARTMENT_NAME,SNOWFLAKE_EXPERIENCE_YEARS
+LRN_REC_001,EMP_DEMO_001,Ananya Rao,ananya.rao@example.com,Data Engineering,0
+LRN_REC_002,EMP_DEMO_002,Rahul Mehta,rahul.mehta@example.com,Analytics,3
