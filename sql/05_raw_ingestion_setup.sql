@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Create the RAW table, CSV file format,
              and internal stage for study-topic ingestion.
 */

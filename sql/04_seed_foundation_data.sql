@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Add the certification, experience levels,
              exam domains, and learning paths.
 */

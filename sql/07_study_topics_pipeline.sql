@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Validate RAW study topics, store rejected records,
              load valid records into CORE and process future changes.
 */

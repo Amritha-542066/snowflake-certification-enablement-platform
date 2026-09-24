@@ -1,5 +1,5 @@
 /*==============================================================================
-  SnowPro Core Enablement Platform
+  Snowflake Certification Enablement Platform
   Step 17: Learning activity processing pipeline
 
   Purpose:

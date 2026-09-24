@@ -1,5 +1,5 @@
 /*==============================================================================
-  SnowPro Core Enablement Platform
+  Snowflake Certification Enablement Platform
   Step 19: Role-based access control
 
   Roles:

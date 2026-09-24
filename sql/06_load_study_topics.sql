@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Load the staged study-topic CSV into the RAW inbox table.
 */
 

@@ -1,8 +1,8 @@
-# SnowPro Core Enablement Platform
+# Snowflake Certification Enablement Platform
 
 ## Overview
 
-The SnowPro Core Enablement Platform is a Snowflake-based learning platform for employees preparing for the SnowPro Core certification.
+The Snowflake Certification Enablement Platform is a Snowflake-based learning platform for employees preparing for the SnowPro Core certification.
 
 It provides structured learning paths based specifically on a learner's Snowflake experience and tracks their progress from registration to certification readiness.
 

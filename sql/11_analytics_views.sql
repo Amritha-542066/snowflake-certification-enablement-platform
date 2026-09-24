@@ -1,5 +1,5 @@
 /*==============================================================================
-  SnowPro Core Enablement Platform
+  Snowflake Certification Enablement Platform
   Step 18: Analytics and certification-readiness views
 
   Purpose:

@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Create learner, enrollment, progress, resource,
              learning-event, and assessment tables.
 */

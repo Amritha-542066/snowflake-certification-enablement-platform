@@ -1,8 +1,8 @@
-# SnowPro Core Enablement Platform — Deployment Guide
+# Snowflake Certification Enablement Platform — Deployment Guide
 
 ## 1. Purpose
 
-The SnowPro Core Enablement Platform provides structured certification learning paths based on a learner's Snowflake experience.
+The Snowflake Certification Enablement Platform provides structured certification learning paths based on a learner's Snowflake experience.
 
 The platform supports:
 

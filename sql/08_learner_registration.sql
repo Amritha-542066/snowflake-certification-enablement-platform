@@ -1,5 +1,5 @@
 /*==============================================================================
-  SnowPro Core Enablement Platform
+  Snowflake Certification Enablement Platform
   Step 16: Real learner registration
 
   Purpose:

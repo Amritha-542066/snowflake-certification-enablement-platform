@@ -1,5 +1,5 @@
 /*
-    Project: SnowPro Core Enablement Platform
+    Project: Snowflake Certification Enablement Platform
     Purpose: Create the warehouse, database, and project schemas.
 */
 
@@ -11,7 +11,7 @@ CREATE WAREHOUSE IF NOT EXISTS SNOWPRO_LEARNING_WH
     AUTO_SUSPEND = 60
     AUTO_RESUME = TRUE
     INITIALLY_SUSPENDED = TRUE
-    COMMENT = 'Warehouse for the SnowPro Core Enablement Platform';
+    COMMENT = 'Warehouse for the Snowflake Certification Enablement Platform';
 
 -- Main project database.
 CREATE DATABASE IF NOT EXISTS SNOWPRO_ENABLEMENT

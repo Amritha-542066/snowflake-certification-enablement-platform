@@ -1,4 +1,4 @@
-# SnowPro Core Enablement Platform — Demo Guide
+# Snowflake Certification Enablement Platform — Demo Guide
 
 ## 1. Demo Objective
 
@@ -47,7 +47,7 @@ Do not use personal employee information during the demo.
 
 Suggested explanation:
 
-> This project is called the SnowPro Core Enablement Platform. It provides a reusable learning framework for employees preparing for the SnowPro Core certification. The learning timeline is assigned based specifically on each learner's Snowflake experience.
+> This project is called the Snowflake Certification Enablement Platform. It provides a reusable learning framework for employees preparing for the SnowPro Core certification. The learning timeline is assigned based specifically on each learner's Snowflake experience.
 
 The four learning paths are:
 
