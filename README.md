@@ -303,3 +303,159 @@ Completed areas:
 - RBAC
 - Data-quality testing
 - Deployment and demo documentation
+
+
+## CSV Learner and Progress Ingestion
+
+The platform supports CSV-based learner registration and learning-progress updates.
+
+### Learner Information
+
+The learner file is located at:
+
+```text
+data/learner_information.csv
+```
+
+Required fields:
+
+- Source record ID
+- Employee ID
+- Learner name
+- Email
+- Department
+- Snowflake experience in years
+
+The learner pipeline:
+
+1. Loads the CSV into `RAW.LEARNER_INFORMATION_INBOX`.
+2. Uses `RAW.LEARNER_INFORMATION_STREAM` to detect new records.
+3. Calls `CONTROL.PROCESS_LEARNER_INFORMATION`.
+4. Validates learner information.
+5. Calls `CONTROL.REGISTER_LEARNER`.
+6. Assigns an experience-based learning path.
+7. Initializes all assigned topics.
+8. Stores invalid records with a rejection reason.
+9. Records the pipeline result.
+
+The implementation is available in:
+
+```text
+sql/13_learner_information_pipeline.sql
+```
+
+### Learner Progress
+
+The progress file is located at:
+
+```text
+data/learner_progress.csv
+```
+
+Required fields:
+
+- Activity ID
+- Employee ID
+- Topic ID
+- Event type
+- Duration in minutes
+- Completion percentage
+- Activity timestamp
+- Notes
+
+The progress pipeline:
+
+1. Loads the CSV into `RAW.LEARNER_PROGRESS_INBOX`.
+2. Uses `RAW.LEARNER_PROGRESS_STREAM` to detect new records.
+3. Calls `CONTROL.PROCESS_LEARNER_PROGRESS`.
+4. Validates the learner, enrollment, topic and activity.
+5. Inserts valid activity into `CORE.LEARNING_EVENTS`.
+6. Uses the existing learning-events pipeline to update topic progress.
+7. Stores invalid records with a rejection reason.
+8. Records the pipeline result.
+
+The implementation is available in:
+
+```text
+sql/14_learner_progress_pipeline.sql
+```
+
+## Validation and Error Handling
+
+Invalid records are stored in:
+
+```text
+SNOWPRO_ENABLEMENT.CONTROL.CSV_REJECTED_RECORDS
+```
+
+Pipeline execution results are stored in:
+
+```text
+SNOWPRO_ENABLEMENT.CONTROL.CSV_PIPELINE_RUN_LOG
+```
+
+Successfully accepted source IDs are stored in:
+
+```text
+SNOWPRO_ENABLEMENT.CONTROL.CSV_PROCESSED_RECORDS
+```
+
+This prevents the same source record from being accepted twice.
+
+Rejected records can be corrected, uploaded again and marked as resolved after successful processing.
+
+## Testing
+
+The test data is stored under:
+
+```text
+tests/data
+```
+
+The complete CSV-pipeline validation script is:
+
+```text
+tests/03_csv_pipeline_validation_tests.sql
+```
+
+The testing results are documented in:
+
+```text
+docs/TEST_RESULTS.md
+```
+
+A total of 15 functional, validation and automation tests passed.
+
+## Design Documentation
+
+The platform design is documented in:
+
+```text
+docs/DESIGN_DOCUMENT.md
+```
+
+## Task Management
+
+The following Snowflake Tasks are available:
+
+- `PROCESS_STUDY_TOPICS_TASK`
+- `PROCESS_LEARNER_INFORMATION_TASK`
+- `PROCESS_LEARNER_PROGRESS_TASK`
+- `PROCESS_LEARNING_EVENTS_TASK`
+
+The Tasks were successfully tested and then suspended to protect trial-account credits.
+
+Resume them only when automatic processing is required.
+
+## Roadmap
+
+Planned enhancements include:
+
+- Connect the platform to the approved Mastech Excel source
+- Automatically load learner and progress data into the RAW layer
+- Add pipeline-failure and rejection notifications
+- Support additional Snowflake certifications
+- Make learning-path durations configurable
+- Make experience categories configurable
+- Add a Streamlit interface
+- Establish a formal cost baseline
