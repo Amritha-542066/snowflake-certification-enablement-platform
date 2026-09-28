@@ -121,8 +121,8 @@ flowchart TD
 
 | Component | Name | Purpose |
 |---|---|---|
-| Warehouse | `SNOWPRO_LEARNING_WH` | Executes platform SQL and pipeline processing |
-| Database | `SNOWPRO_ENABLEMENT` | Stores all platform objects |
+| Warehouse | `WH_CERT_ENABLEMENT_DEV_XS` | Executes platform SQL and pipeline processing |
+| Database | `DB_CERT_ENABLEMENT_DEV` | Stores all platform objects |
 | RAW schema | `RAW` | Stores incoming data before validation |
 | CORE schema | `CORE` | Stores validated platform data |
 | CONTROL schema | `CONTROL` | Stores procedures, Tasks, audit data and rejected records |
@@ -141,10 +141,10 @@ Main objects include:
 - `RAW.STUDY_TOPICS_INBOX`
 - `RAW.LEARNER_INFORMATION_INBOX`
 - `RAW.LEARNER_PROGRESS_INBOX`
-- `RAW.STUDY_TOPICS_STREAM`
-- `RAW.LEARNER_INFORMATION_STREAM`
-- `RAW.LEARNER_PROGRESS_STREAM`
-- `RAW.CERTIFICATION_UPLOAD_STAGE`
+- `RAW.STR_STUDY_TOPICS_INBOX`
+- `RAW.STR_LEARNER_INFORMATION_INBOX`
+- `RAW.STR_LEARNER_PROGRESS_INBOX`
+- `RAW.INT_RAW_CERTIFICATION_UPLOAD_DEV`
 - `RAW.CERTIFICATION_CSV_FORMAT`
 
 RAW learner and progress values are stored as text where appropriate. This allows invalid values to be loaded and evaluated by the validation procedure instead of causing the complete CSV load to fail.
@@ -173,12 +173,12 @@ The CONTROL layer manages validation, processing, scheduling and observability.
 
 Main objects include:
 
-- `CONTROL.REGISTER_LEARNER`
-- `CONTROL.PROCESS_STUDY_TOPICS`
-- `CONTROL.RECORD_LEARNING_ACTIVITY`
-- `CONTROL.PROCESS_LEARNING_EVENTS`
-- `CONTROL.PROCESS_LEARNER_INFORMATION`
-- `CONTROL.PROCESS_LEARNER_PROGRESS`
+- `CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_STUDY_TOPICS`
+- `CONTROL.SP_RECORD_CERT_ENABLEMENT_LEARNING_ACTIVITY`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNING_EVENTS`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS`
 - `CONTROL.REJECTED_RECORDS`
 - `CONTROL.PIPELINE_RUN_LOG`
 - `CONTROL.CSV_REJECTED_RECORDS`
@@ -191,10 +191,10 @@ The ANALYTICS layer provides reporting-ready information.
 
 Main views include:
 
-- `ANALYTICS.V_WEEKLY_STUDY_PLAN`
-- `ANALYTICS.V_LEARNER_PROGRESS`
-- `ANALYTICS.V_DOMAIN_PROGRESS`
-- `ANALYTICS.V_CERTIFICATION_READINESS`
+- `ANALYTICS.VW_WEEKLY_STUDY_PLAN`
+- `ANALYTICS.VW_LEARNER_PROGRESS`
+- `ANALYTICS.VW_DOMAIN_PROGRESS`
+- `ANALYTICS.VW_CERTIFICATION_READINESS`
 
 ## Learning Paths
 
@@ -240,8 +240,8 @@ The flow is:
 study_topics.csv
 → Internal stage
 → RAW.STUDY_TOPICS_INBOX
-→ RAW.STUDY_TOPICS_STREAM
-→ CONTROL.PROCESS_STUDY_TOPICS
+→ RAW.STR_STUDY_TOPICS_INBOX
+→ CONTROL.SP_PROCESS_CERT_ENABLEMENT_STUDY_TOPICS
 → Validation
 → CORE.STUDY_TOPICS or rejected-record table
 → Pipeline run log
@@ -288,9 +288,9 @@ Learner CSV
 → RAW.LEARNER_INFORMATION_INBOX
 → Stream
 → Learner-processing Task
-→ CONTROL.PROCESS_LEARNER_INFORMATION
+→ CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION
 → Validation
-→ CONTROL.REGISTER_LEARNER
+→ CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER
 → CORE learner and enrollment tables
 ```
 
@@ -346,7 +346,7 @@ Progress CSV
 → RAW.LEARNER_PROGRESS_INBOX
 → Stream
 → Progress-processing Task
-→ CONTROL.PROCESS_LEARNER_PROGRESS
+→ CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS
 → CORE.LEARNING_EVENTS
 → Learning-events Stream
 → Learning-events Task
@@ -436,10 +436,10 @@ Tasks provide Snowflake-native scheduling.
 
 The following Tasks are available:
 
-- `CONTROL.PROCESS_STUDY_TOPICS_TASK`
-- `CONTROL.PROCESS_LEARNER_INFORMATION_TASK`
-- `CONTROL.PROCESS_LEARNER_PROGRESS_TASK`
-- `CONTROL.PROCESS_LEARNING_EVENTS_TASK`
+- `CONTROL.TSK_PROCESS_STUDY_TOPICS_1MIN`
+- `CONTROL.TSK_PROCESS_LEARNER_INFORMATION_1MIN`
+- `CONTROL.TSK_PROCESS_LEARNER_PROGRESS_1MIN`
+- `CONTROL.TSK_PROCESS_LEARNING_EVENTS_5MIN`
 
 Each Task uses `SYSTEM$STREAM_HAS_DATA` to check whether its Stream contains changes.
 
@@ -453,7 +453,7 @@ Stored procedures perform reusable validation and processing.
 
 ### Register Learner
 
-`CONTROL.REGISTER_LEARNER`:
+`CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER`:
 
 - Validates learner details
 - Determines the experience category
@@ -465,7 +465,7 @@ Stored procedures perform reusable validation and processing.
 
 ### Process Learner Information
 
-`CONTROL.PROCESS_LEARNER_INFORMATION`:
+`CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION`:
 
 - Reads the learner Stream
 - Validates incoming learner records
@@ -475,7 +475,7 @@ Stored procedures perform reusable validation and processing.
 
 ### Process Learner Progress
 
-`CONTROL.PROCESS_LEARNER_PROGRESS`:
+`CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS`:
 
 - Reads the progress Stream
 - Validates progress records
@@ -486,7 +486,7 @@ Stored procedures perform reusable validation and processing.
 
 ### Process Learning Events
 
-`CONTROL.PROCESS_LEARNING_EVENTS`:
+`CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNING_EVENTS`:
 
 - Reads newly created learning events
 - Updates progress status
@@ -535,7 +535,7 @@ This prevents the same source record or activity from being accepted twice.
 
 ### Weekly Study Plan
 
-`V_WEEKLY_STUDY_PLAN` shows:
+`VW_WEEKLY_STUDY_PLAN` shows:
 
 - Learner
 - Learning path
@@ -545,7 +545,7 @@ This prevents the same source record or activity from being accepted twice.
 
 ### Learner Progress
 
-`V_LEARNER_PROGRESS` shows:
+`VW_LEARNER_PROGRESS` shows:
 
 - Total assigned topics
 - Completed topics
@@ -556,11 +556,11 @@ This prevents the same source record or activity from being accepted twice.
 
 ### Domain Progress
 
-`V_DOMAIN_PROGRESS` summarizes progress for each exam domain.
+`VW_DOMAIN_PROGRESS` summarizes progress for each exam domain.
 
 ### Certification Readiness
 
-`V_CERTIFICATION_READINESS` combines learning progress and assessment results into an internal readiness indicator.
+`VW_CERTIFICATION_READINESS` combines learning progress and assessment results into an internal readiness indicator.
 
 The readiness score is an internal prototype calculation. It is not an official Snowflake score and does not guarantee certification success.
 
@@ -568,9 +568,9 @@ The readiness score is an internal prototype calculation. It is not an official 
 
 | Role | Intended access |
 |---|---|
-| `SNOWPRO_LEARNER` | Read learner-facing study-plan and progress information |
-| `SNOWPRO_PROGRAM_MANAGER` | Monitor enrollments, progress, assessments and analytics |
-| `SNOWPRO_PLATFORM_ADMIN` | Manage configuration, ingestion, processing and troubleshooting |
+| `FR_CERT_ENABLEMENT_LEARNER_DEV` | Read learner-facing study-plan and progress information |
+| `FR_CERT_ENABLEMENT_PROGRAM_MANAGER_DEV` | Monitor enrollments, progress, assessments and analytics |
+| `FR_CERT_ENABLEMENT_PLATFORM_ADMIN_DEV` | Manage configuration, ingestion, processing and troubleshooting |
 
 Registering someone as a platform learner does not automatically create a Snowflake login.
 

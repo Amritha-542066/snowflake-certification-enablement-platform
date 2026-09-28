@@ -13,8 +13,8 @@
 ==============================================================================*/
 
 USE ROLE ACCOUNTADMIN;
-USE WAREHOUSE SNOWPRO_LEARNING_WH;
-USE DATABASE SNOWPRO_ENABLEMENT;
+USE WAREHOUSE WH_CERT_ENABLEMENT_DEV_XS;
+USE DATABASE DB_CERT_ENABLEMENT_DEV;
 USE SCHEMA CONTROL;
 
 
@@ -22,7 +22,7 @@ USE SCHEMA CONTROL;
   Create the learner-registration procedure
 ------------------------------------------------------------------------------*/
 
-CREATE OR REPLACE PROCEDURE CONTROL.REGISTER_LEARNER(
+CREATE OR REPLACE PROCEDURE CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER(
     P_EMPLOYEE_ID VARCHAR,
     P_LEARNER_NAME VARCHAR,
     P_EMAIL VARCHAR,
@@ -353,5 +353,5 @@ $$;
   Verify that the procedure was created
 ------------------------------------------------------------------------------*/
 
-SHOW PROCEDURES LIKE 'REGISTER_LEARNER'
-IN SCHEMA SNOWPRO_ENABLEMENT.CONTROL;
+SHOW PROCEDURES LIKE 'SP_REGISTER_CERT_ENABLEMENT_LEARNER'
+IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;

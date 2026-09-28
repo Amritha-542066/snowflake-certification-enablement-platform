@@ -12,8 +12,8 @@
 ==============================================================================*/
 
 USE ROLE ACCOUNTADMIN;
-USE WAREHOUSE SNOWPRO_LEARNING_WH;
-USE DATABASE SNOWPRO_ENABLEMENT;
+USE WAREHOUSE WH_CERT_ENABLEMENT_DEV_XS;
+USE DATABASE DB_CERT_ENABLEMENT_DEV;
 
 
 /*------------------------------------------------------------------------------

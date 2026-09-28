@@ -5,8 +5,8 @@
 **Test Date:** 24 September 2026
 **Tested By:** Amritha Kalyanasundaram Ganesh
 **Environment:** Snowflake trial account
-**Warehouse:** SNOWPRO_LEARNING_WH
-**Database:** SNOWPRO_ENABLEMENT
+**Warehouse:** WH_CERT_ENABLEMENT_DEV_XS
+**Database:** DB_CERT_ENABLEMENT_DEV
 **Overall Status:** PASS
 
 ## 1. Testing Objective
@@ -182,7 +182,7 @@ All Tasks were suspended after testing to protect the trial-account credits.
 Pipeline runs were recorded in:
 
 ```text
-SNOWPRO_ENABLEMENT.CONTROL.CSV_PIPELINE_RUN_LOG
+DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PIPELINE_RUN_LOG
 ```
 
 Each record included:
@@ -198,7 +198,7 @@ Each record included:
 Rejected records were stored in:
 
 ```text
-SNOWPRO_ENABLEMENT.CONTROL.CSV_REJECTED_RECORDS
+DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_REJECTED_RECORDS
 ```
 
 Each rejection included:

@@ -78,7 +78,7 @@ Analytics and Readiness Views
 ### Warehouse
 
 ```text
-SNOWPRO_LEARNING_WH
+WH_CERT_ENABLEMENT_DEV_XS
 ```
 
 Configuration:
@@ -90,7 +90,7 @@ Configuration:
 ### Database
 
 ```text
-SNOWPRO_ENABLEMENT
+DB_CERT_ENABLEMENT_DEV
 ```
 
 ### Schemas
@@ -169,10 +169,10 @@ The pipeline:
 
 | View | Purpose |
 |---|---|
-| `V_WEEKLY_STUDY_PLAN` | Weekly study schedule for each learning path |
-| `V_LEARNER_PROGRESS` | Overall learner progress and study hours |
-| `V_DOMAIN_PROGRESS` | Progress across the five exam domains |
-| `V_CERTIFICATION_READINESS` | Readiness score, status and recommendation |
+| `VW_WEEKLY_STUDY_PLAN` | Weekly study schedule for each learning path |
+| `VW_LEARNER_PROGRESS` | Overall learner progress and study hours |
+| `VW_DOMAIN_PROGRESS` | Progress across the five exam domains |
+| `VW_CERTIFICATION_READINESS` | Readiness score, status and recommendation |
 
 The readiness score is an internal learning indicator and is not a guarantee of certification success.
 
@@ -182,9 +182,9 @@ The readiness score is an internal learning indicator and is not a guarantee of 
 
 | Role | Purpose |
 |---|---|
-| `SNOWPRO_LEARNER` | View study plans and record activities |
-| `SNOWPRO_PROGRAM_MANAGER` | Register learners, maintain assessments and view analytics |
-| `SNOWPRO_PLATFORM_ADMIN` | Manage the complete platform |
+| `FR_CERT_ENABLEMENT_LEARNER_DEV` | View study plans and record activities |
+| `FR_CERT_ENABLEMENT_PROGRAM_MANAGER_DEV` | Register learners, maintain assessments and view analytics |
+| `FR_CERT_ENABLEMENT_PLATFORM_ADMIN_DEV` | Manage the complete platform |
 
 Actual Snowflake usernames are assigned to roles separately and are not stored in Git.
 
@@ -329,10 +329,10 @@ Required fields:
 The learner pipeline:
 
 1. Loads the CSV into `RAW.LEARNER_INFORMATION_INBOX`.
-2. Uses `RAW.LEARNER_INFORMATION_STREAM` to detect new records.
-3. Calls `CONTROL.PROCESS_LEARNER_INFORMATION`.
+2. Uses `RAW.STR_LEARNER_INFORMATION_INBOX` to detect new records.
+3. Calls `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION`.
 4. Validates learner information.
-5. Calls `CONTROL.REGISTER_LEARNER`.
+5. Calls `CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER`.
 6. Assigns an experience-based learning path.
 7. Initializes all assigned topics.
 8. Stores invalid records with a rejection reason.
@@ -366,8 +366,8 @@ Required fields:
 The progress pipeline:
 
 1. Loads the CSV into `RAW.LEARNER_PROGRESS_INBOX`.
-2. Uses `RAW.LEARNER_PROGRESS_STREAM` to detect new records.
-3. Calls `CONTROL.PROCESS_LEARNER_PROGRESS`.
+2. Uses `RAW.STR_LEARNER_PROGRESS_INBOX` to detect new records.
+3. Calls `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS`.
 4. Validates the learner, enrollment, topic and activity.
 5. Inserts valid activity into `CORE.LEARNING_EVENTS`.
 6. Uses the existing learning-events pipeline to update topic progress.
@@ -385,19 +385,19 @@ sql/14_learner_progress_pipeline.sql
 Invalid records are stored in:
 
 ```text
-SNOWPRO_ENABLEMENT.CONTROL.CSV_REJECTED_RECORDS
+DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_REJECTED_RECORDS
 ```
 
 Pipeline execution results are stored in:
 
 ```text
-SNOWPRO_ENABLEMENT.CONTROL.CSV_PIPELINE_RUN_LOG
+DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PIPELINE_RUN_LOG
 ```
 
 Successfully accepted source IDs are stored in:
 
 ```text
-SNOWPRO_ENABLEMENT.CONTROL.CSV_PROCESSED_RECORDS
+DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PROCESSED_RECORDS
 ```
 
 This prevents the same source record from being accepted twice.
@@ -438,10 +438,10 @@ docs/DESIGN_DOCUMENT.md
 
 The following Snowflake Tasks are available:
 
-- `PROCESS_STUDY_TOPICS_TASK`
-- `PROCESS_LEARNER_INFORMATION_TASK`
-- `PROCESS_LEARNER_PROGRESS_TASK`
-- `PROCESS_LEARNING_EVENTS_TASK`
+- `TSK_PROCESS_STUDY_TOPICS_1MIN`
+- `TSK_PROCESS_LEARNER_INFORMATION_1MIN`
+- `TSK_PROCESS_LEARNER_PROGRESS_1MIN`
+- `TSK_PROCESS_LEARNING_EVENTS_5MIN`
 
 The Tasks were successfully tested and then suspended to protect trial-account credits.
 
