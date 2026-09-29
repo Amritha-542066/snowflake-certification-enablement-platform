@@ -351,6 +351,8 @@ DECLARE
     V_SEND_RESULT               VARCHAR;
     V_FAILURE_MESSAGE           VARCHAR;
 
+    V_LEARNER_RESULTSET         RESULTSET;
+
 BEGIN
 
     /*--------------------------------------------------------------------------
@@ -399,7 +401,7 @@ BEGIN
       Process each eligible learner
     --------------------------------------------------------------------------*/
 
-    FOR LEARNER_ITEM IN (
+    V_LEARNER_RESULTSET := (
         SELECT
             LEARNER_ID,
             EMPLOYEE_ID,
@@ -415,9 +417,10 @@ BEGIN
 
         ORDER BY
             EMPLOYEE_ID
-    )
+    );
 
-    DO
+
+    FOR LEARNER_ITEM IN V_LEARNER_RESULTSET DO
 
         V_CANDIDATE_COUNT :=
             V_CANDIDATE_COUNT + 1;
