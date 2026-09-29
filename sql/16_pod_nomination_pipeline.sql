@@ -1,27 +1,16 @@
 /*==============================================================================
   Snowflake Certification Enablement Platform
   Step 16: Pod and certification-nomination CSV pipeline
-
-  Purpose:
-  - Receive Pod configuration through CSV.
-  - Receive Pod Lead certification nominations through CSV.
-  - Detect new rows using Snowflake Streams.
-  - Validate and process the records using stored procedures.
-  - Create dynamic learner plans.
-  - Record accepted, rejected and pipeline-run details.
 ==============================================================================*/
 
 
-/*------------------------------------------------------------------------------
-  1. Select the required environment
-------------------------------------------------------------------------------*/
+/*==============================================================================
+  1. ENVIRONMENT
+==============================================================================*/
 
 USE ROLE ACCOUNTADMIN;
-
 USE WAREHOUSE WH_CERT_ENABLEMENT_DEV_XS;
-
 USE DATABASE DB_CERT_ENABLEMENT_DEV;
-
 USE SCHEMA RAW;
 
 
@@ -65,22 +54,20 @@ CREATE TABLE IF NOT EXISTS RAW.CERTIFICATION_NOMINATIONS_INBOX (
 
 /*==============================================================================
   4. STREAMS
-
-  These Streams detect newly inserted CSV rows.
 ==============================================================================*/
 
-CREATE OR REPLACE STREAM RAW.STR_POD_CONFIGURATION_INBOX
+CREATE STREAM IF NOT EXISTS RAW.STR_POD_CONFIGURATION_INBOX
     ON TABLE RAW.POD_CONFIGURATION_INBOX
     APPEND_ONLY = TRUE;
 
 
-CREATE OR REPLACE STREAM RAW.STR_CERTIFICATION_NOMINATIONS_INBOX
+CREATE STREAM IF NOT EXISTS RAW.STR_CERTIFICATION_NOMINATIONS_INBOX
     ON TABLE RAW.CERTIFICATION_NOMINATIONS_INBOX
     APPEND_ONLY = TRUE;
 
 
 /*==============================================================================
-  5. POD AND NOMINATION PROCESSING PROCEDURE
+  5. PROCESSING PROCEDURE
 ==============================================================================*/
 
 CREATE OR REPLACE PROCEDURE
@@ -121,6 +108,9 @@ DECLARE
     V_RESULT                       VARCHAR;
     V_REJECTION_REASON             VARCHAR;
 
+    V_POD_RESULTSET                RESULTSET;
+    V_NOMINATION_RESULTSET         RESULTSET;
+
 BEGIN
 
     V_RUN_ID :=
@@ -135,42 +125,41 @@ BEGIN
 
 
     /*--------------------------------------------------------------------------
-      Create temporary work tables.
-
-      Inserting Stream rows into these temporary tables consumes the Stream.
-      Future executions will therefore process only newer rows.
+      Create temporary processing tables
     --------------------------------------------------------------------------*/
 
-    CREATE OR REPLACE TEMPORARY TABLE TMP_POD_CONFIGURATION_ROWS (
-        POD_ID                    VARCHAR,
-        POD_NAME                  VARCHAR,
-        POD_LEAD_EMPLOYEE_ID      VARCHAR,
-        POD_LEAD_NAME             VARCHAR,
-        POD_LEAD_EMAIL            VARCHAR,
-        ACTIVE_FLAG               BOOLEAN,
-        SOURCE_FILE_NAME          VARCHAR
-    );
+    CREATE OR REPLACE TEMPORARY TABLE
+        TMP_POD_CONFIGURATION_ROWS (
+            POD_ID                    VARCHAR,
+            POD_NAME                  VARCHAR,
+            POD_LEAD_EMPLOYEE_ID      VARCHAR,
+            POD_LEAD_NAME             VARCHAR,
+            POD_LEAD_EMAIL            VARCHAR,
+            ACTIVE_FLAG               BOOLEAN,
+            SOURCE_FILE_NAME          VARCHAR
+        );
 
 
-    CREATE OR REPLACE TEMPORARY TABLE TMP_CERTIFICATION_NOMINATION_ROWS (
-        SOURCE_RECORD_ID                VARCHAR,
-        EMPLOYEE_ID                     VARCHAR,
-        LEARNER_NAME                    VARCHAR,
-        EMAIL                           VARCHAR,
-        DEPARTMENT_NAME                 VARCHAR,
-        SNOWFLAKE_EXPERIENCE_YEARS      NUMBER(4,1),
-        POD_ID                          VARCHAR,
-        POD_LEAD_EMPLOYEE_ID            VARCHAR,
-        CERTIFICATION_ID                VARCHAR,
-        TARGET_COMPLETION_DATE          DATE,
-        TARGET_EXAM_DATE                DATE,
-        NOMINATION_REASON               VARCHAR,
-        SOURCE_FILE_NAME                VARCHAR
-    );
+    CREATE OR REPLACE TEMPORARY TABLE
+        TMP_CERTIFICATION_NOMINATION_ROWS (
+            SOURCE_RECORD_ID                VARCHAR,
+            EMPLOYEE_ID                     VARCHAR,
+            LEARNER_NAME                    VARCHAR,
+            EMAIL                           VARCHAR,
+            DEPARTMENT_NAME                 VARCHAR,
+            SNOWFLAKE_EXPERIENCE_YEARS      NUMBER(4,1),
+            POD_ID                          VARCHAR,
+            POD_LEAD_EMPLOYEE_ID            VARCHAR,
+            CERTIFICATION_ID                VARCHAR,
+            TARGET_COMPLETION_DATE          DATE,
+            TARGET_EXAM_DATE                DATE,
+            NOMINATION_REASON               VARCHAR,
+            SOURCE_FILE_NAME                VARCHAR
+        );
 
 
     /*--------------------------------------------------------------------------
-      Consume newly added Pod configuration rows
+      Consume new Pod records from the Pod Stream
     --------------------------------------------------------------------------*/
 
     INSERT INTO TMP_POD_CONFIGURATION_ROWS (
@@ -198,7 +187,7 @@ BEGIN
 
 
     /*--------------------------------------------------------------------------
-      Consume newly added certification-nomination rows
+      Consume new nomination records from the nomination Stream
     --------------------------------------------------------------------------*/
 
     INSERT INTO TMP_CERTIFICATION_NOMINATION_ROWS (
@@ -223,22 +212,27 @@ BEGIN
         TRIM(LEARNER_NAME),
         LOWER(TRIM(EMAIL)),
         TRIM(DEPARTMENT_NAME),
+
         TRY_TO_DECIMAL(
             SNOWFLAKE_EXPERIENCE_YEARS,
             4,
             1
         ),
+
         UPPER(TRIM(POD_ID)),
         TRIM(POD_LEAD_EMPLOYEE_ID),
         UPPER(TRIM(CERTIFICATION_ID)),
+
         TRY_TO_DATE(
             TARGET_COMPLETION_DATE,
             'YYYY-MM-DD'
         ),
+
         TRY_TO_DATE(
             TARGET_EXAM_DATE,
             'YYYY-MM-DD'
         ),
+
         TRIM(NOMINATION_REASON),
         SOURCE_FILE_NAME
 
@@ -248,29 +242,35 @@ BEGIN
 
 
     /*--------------------------------------------------------------------------
-      Count all received records
+      Count all records received
     --------------------------------------------------------------------------*/
 
     SELECT
-        (
-            SELECT COUNT(*)
-            FROM TMP_POD_CONFIGURATION_ROWS
-        )
-        +
-        (
-            SELECT COUNT(*)
-            FROM TMP_CERTIFICATION_NOMINATION_ROWS
-        )
+        COUNT(*)
 
     INTO
-        :V_RECORDS_RECEIVED;
+        :V_RECORDS_RECEIVED
+
+    FROM (
+        SELECT
+            POD_ID AS RECORD_IDENTIFIER
+
+        FROM TMP_POD_CONFIGURATION_ROWS
+
+        UNION ALL
+
+        SELECT
+            SOURCE_RECORD_ID AS RECORD_IDENTIFIER
+
+        FROM TMP_CERTIFICATION_NOMINATION_ROWS
+    ) AS RECEIVED_RECORDS;
 
 
-    /*============================================================================
+    /*==========================================================================
       6. PROCESS POD CONFIGURATION
-    ============================================================================*/
+    ==========================================================================*/
 
-    FOR POD_ITEM IN (
+        V_POD_RESULTSET := (
         SELECT
             POD_ID,
             POD_NAME,
@@ -281,9 +281,10 @@ BEGIN
             SOURCE_FILE_NAME
 
         FROM TMP_POD_CONFIGURATION_ROWS
-    )
+    );
 
-    DO
+
+    FOR POD_ITEM IN V_POD_RESULTSET DO
 
         V_POD_ID :=
             POD_ITEM.POD_ID;
@@ -310,7 +311,7 @@ BEGIN
 
 
         /*----------------------------------------------------------------------
-          Validate the Pod record
+          Validate Pod record
         ----------------------------------------------------------------------*/
 
         IF (
@@ -363,7 +364,7 @@ BEGIN
 
 
         /*----------------------------------------------------------------------
-          Accept or reject the Pod record
+          Accept valid Pod record
         ----------------------------------------------------------------------*/
 
         IF (V_REJECTION_REASON IS NULL) THEN
@@ -443,10 +444,6 @@ BEGIN
                 V_RECORDS_ACCEPTED + 1;
 
 
-            /*------------------------------------------------------------------
-              Resolve any earlier rejection for the same Pod
-            ------------------------------------------------------------------*/
-
             UPDATE CONTROL.CSV_REJECTED_RECORDS
 
             SET
@@ -457,6 +454,10 @@ BEGIN
               AND SOURCE_RECORD_ID = :V_POD_ID
               AND RESOLVED_FLAG = FALSE;
 
+
+        /*----------------------------------------------------------------------
+          Reject invalid Pod record
+        ----------------------------------------------------------------------*/
 
         ELSE
 
@@ -478,11 +479,11 @@ BEGIN
 
             SELECT
                 'REJ_' ||
-                REPLACE(
-                    UUID_STRING(),
-                    '-',
-                    ''
-                ),
+                    REPLACE(
+                        UUID_STRING(),
+                        '-',
+                        ''
+                    ),
 
                 'POD_CONFIGURATION',
 
@@ -492,7 +493,6 @@ BEGIN
                 ),
 
                 :V_SOURCE_FILE_NAME,
-
                 :V_REJECTION_REASON,
 
                 OBJECT_CONSTRUCT_KEEP_NULL(
@@ -524,11 +524,11 @@ BEGIN
     END FOR;
 
 
-/*==============================================================================
-  7. PROCESS CERTIFICATION NOMINATIONS
-==============================================================================*/
+    /*==========================================================================
+      7. PROCESS CERTIFICATION NOMINATIONS
+    ==========================================================================*/
 
-    FOR NOMINATION_ITEM IN (
+        V_NOMINATION_RESULTSET := (
         SELECT
             SOURCE_RECORD_ID,
             EMPLOYEE_ID,
@@ -545,9 +545,10 @@ BEGIN
             SOURCE_FILE_NAME
 
         FROM TMP_CERTIFICATION_NOMINATION_ROWS
-    )
+    );
 
-    DO
+
+    FOR NOMINATION_ITEM IN V_NOMINATION_RESULTSET DO
 
         V_SOURCE_RECORD_ID :=
             NOMINATION_ITEM.SOURCE_RECORD_ID;
@@ -589,10 +590,11 @@ BEGIN
             NOMINATION_ITEM.SOURCE_FILE_NAME;
 
         V_REJECTION_REASON := NULL;
+        V_RESULT := NULL;
 
 
         /*----------------------------------------------------------------------
-          Perform basic CSV-format validation
+          Validate nomination record
         ----------------------------------------------------------------------*/
 
         IF (
@@ -633,6 +635,35 @@ BEGIN
             V_REJECTION_REASON :=
                 'Snowflake experience must be a valid number.';
 
+        ELSEIF (V_EXPERIENCE_YEARS < 0) THEN
+
+            V_REJECTION_REASON :=
+                'Snowflake experience must be zero or greater.';
+
+        ELSEIF (
+            V_POD_ID IS NULL
+            OR TRIM(V_POD_ID) = ''
+        ) THEN
+
+            V_REJECTION_REASON :=
+                'Pod ID is required.';
+
+        ELSEIF (
+            V_POD_LEAD_EMPLOYEE_ID IS NULL
+            OR TRIM(V_POD_LEAD_EMPLOYEE_ID) = ''
+        ) THEN
+
+            V_REJECTION_REASON :=
+                'Pod Lead employee ID is required.';
+
+        ELSEIF (
+            V_CERTIFICATION_ID IS NULL
+            OR TRIM(V_CERTIFICATION_ID) = ''
+        ) THEN
+
+            V_REJECTION_REASON :=
+                'Certification ID is required.';
+
         ELSEIF (V_TARGET_COMPLETION_DATE IS NULL) THEN
 
             V_REJECTION_REASON :=
@@ -647,7 +678,7 @@ BEGIN
 
 
         /*----------------------------------------------------------------------
-          Call the Pod nomination procedure when the CSV structure is valid
+          Call the dynamic nomination procedure
         ----------------------------------------------------------------------*/
 
         IF (V_REJECTION_REASON IS NULL) THEN
@@ -664,8 +695,20 @@ BEGIN
                 :V_TARGET_COMPLETION_DATE,
                 :V_TARGET_EXAM_DATE,
                 :V_NOMINATION_REASON
-            )
-            INTO :V_RESULT;
+            );
+
+
+            SELECT
+                $1::VARCHAR
+
+            INTO
+                :V_RESULT
+
+            FROM TABLE(
+                RESULT_SCAN(
+                    LAST_QUERY_ID()
+                )
+            );
 
 
             IF (
@@ -679,18 +722,18 @@ BEGIN
                     V_RECORDS_ACCEPTED + 1;
 
 
-                /*--------------------------------------------------------------
-                  Resolve an earlier corrected rejection
-                --------------------------------------------------------------*/
-
                 UPDATE CONTROL.CSV_REJECTED_RECORDS
 
                 SET
                     RESOLVED_FLAG = TRUE,
                     RESOLVED_AT = CURRENT_TIMESTAMP()
 
-                WHERE PIPELINE_NAME = 'CERTIFICATION_NOMINATION'
-                  AND SOURCE_RECORD_ID = :V_SOURCE_RECORD_ID
+                WHERE PIPELINE_NAME =
+                      'CERTIFICATION_NOMINATION'
+
+                  AND SOURCE_RECORD_ID =
+                      :V_SOURCE_RECORD_ID
+
                   AND RESOLVED_FLAG = FALSE;
 
 
@@ -704,7 +747,7 @@ BEGIN
 
 
         /*----------------------------------------------------------------------
-          Store rejected nomination records
+          Store rejected nomination
         ----------------------------------------------------------------------*/
 
         IF (V_REJECTION_REASON IS NOT NULL) THEN
@@ -727,11 +770,11 @@ BEGIN
 
             SELECT
                 'REJ_' ||
-                REPLACE(
-                    UUID_STRING(),
-                    '-',
-                    ''
-                ),
+                    REPLACE(
+                        UUID_STRING(),
+                        '-',
+                        ''
+                    ),
 
                 'CERTIFICATION_NOMINATION',
 
@@ -741,7 +784,6 @@ BEGIN
                 ),
 
                 :V_SOURCE_FILE_NAME,
-
                 :V_REJECTION_REASON,
 
                 OBJECT_CONSTRUCT_KEEP_NULL(
@@ -791,9 +833,9 @@ BEGIN
     END FOR;
 
 
-/*==============================================================================
-  8. WRITE THE PIPELINE RUN LOG
-==============================================================================*/
+    /*==========================================================================
+      8. WRITE PIPELINE RUN LOG
+    ==========================================================================*/
 
     INSERT INTO CONTROL.CSV_PIPELINE_RUN_LOG (
         RUN_ID,
@@ -867,7 +909,7 @@ $$;
 
 
 /*==============================================================================
-  9. AUTOMATED PROCESSING TASK
+  9. AUTOMATED TASK
 ==============================================================================*/
 
 CREATE OR REPLACE TASK
@@ -894,30 +936,21 @@ AS
 
 
 /*------------------------------------------------------------------------------
-  The Task remains suspended after creation.
+  The Task is suspended by default.
 
-  Resume it only during testing or active usage:
+  Resume during active testing:
 
   ALTER TASK CONTROL.TSK_PROCESS_CERT_NOMINATIONS_1MIN RESUME;
 
-  Suspend it after testing to control trial-account cost:
+  Suspend after testing:
 
   ALTER TASK CONTROL.TSK_PROCESS_CERT_NOMINATIONS_1MIN SUSPEND;
 ------------------------------------------------------------------------------*/
 
 
 /*==============================================================================
-  10. CSV LOAD COMMANDS
-
-  Upload these files to the internal stage before executing COPY INTO:
-
-  - pods.csv
-  - certification_nominations.csv
+  10. POD CSV LOAD COMMAND
 ==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Load Pod configuration
-------------------------------------------------------------------------------*/
 
 /*
 COPY INTO RAW.POD_CONFIGURATION_INBOX (
@@ -951,9 +984,9 @@ ON_ERROR = 'ABORT_STATEMENT';
 */
 
 
-/*------------------------------------------------------------------------------
-  Load certification nominations
-------------------------------------------------------------------------------*/
+/*==============================================================================
+  11. CERTIFICATION NOMINATION CSV LOAD COMMAND
+==============================================================================*/
 
 /*
 COPY INTO RAW.CERTIFICATION_NOMINATIONS_INBOX (
@@ -1001,7 +1034,7 @@ ON_ERROR = 'ABORT_STATEMENT';
 
 
 /*==============================================================================
-  11. VERIFICATION COMMANDS
+  12. VERIFICATION
 ==============================================================================*/
 
 SHOW STREAMS
@@ -1013,4 +1046,9 @@ IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;
 
 SHOW TASKS LIKE
     'TSK_PROCESS_CERT_NOMINATIONS_1MIN'
+IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;
+
+
+SHOW PROCEDURES LIKE
+    'SP_PROCESS_CERT_ENABLEMENT_NOMINATIONS'
 IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;
