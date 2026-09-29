@@ -1,229 +1,699 @@
 # Snowflake Certification Enablement Platform
 
-## CSV Pipeline Testing Results
+## Test Results
 
-**Test Date:** 24 September 2026
-**Tested By:** Amritha Kalyanasundaram Ganesh
-**Environment:** Snowflake trial account
-**Warehouse:** WH_CERT_ENABLEMENT_DEV_XS
-**Database:** DB_CERT_ENABLEMENT_DEV
-**Overall Status:** PASS
+## 1. Test Information
 
-## 1. Testing Objective
+| Item | Value |
+|---|---|
+| Tested by | Amritha Kalyanasundaram Ganesh |
+| Test period | 24–29 September 2026 |
+| Environment | Development |
+| Snowflake account | Trial account |
+| Database | DB_CERT_ENABLEMENT_DEV |
+| Warehouse | WH_CERT_ENABLEMENT_DEV_XS |
+| Git branch | feature/pod-dynamic-plan-reminders |
 
-The purpose of this testing was to validate the learner-information and learner-progress CSV ingestion workflows.
+## 2. Testing Objective
 
-The testing covered:
+The purpose of testing was to confirm that the platform can:
 
-- Valid learner processing
-- Experience-based learning-path assignment
-- Topic-progress initialization
-- Valid learning-progress processing
-- Data validation
-- Rejected-record handling
-- Correction and reprocessing
-- Duplicate-prevention checks
-- Pipeline run logging
-- Automatic Stream and Task processing
-- Final learner-progress updates
+- Store Snowflake certification topics and learning resources.
+- Register learners.
+- Track learner progress.
+- Process learner and progress CSV files.
+- Validate incoming records.
+- Store invalid records with a rejection reason.
+- Support Pod Lead certification nominations.
+- Create dynamic learning plans.
+- Record pipeline execution results.
+- Prepare weekly progress reminders.
+- Apply the approved Snowflake object-naming standards.
 
-All testing used fictional demonstration data. No real employee information was stored in Git.
+## 3. Foundation Data Testing
 
-## 2. Test Data
+### 3.1 Certification Data
 
-The following files were used:
+The platform was tested to confirm that the SnowPro Core certification information was available.
+
+Expected result:
+
+- The SnowPro Core certification should be active.
+
+Result:
+
+- Certification data was available successfully.
+
+Status: **PASS**
+
+### 3.2 Exam Domains
+
+The certification topics were grouped under five exam domains.
+
+Expected result:
+
+- Five exam domains should be available.
+
+Result:
+
+- All five exam domains were available.
+
+Status: **PASS**
+
+### 3.3 Study Topics
+
+The study-topic data was loaded from `data/study_topics.csv`.
+
+Expected result:
+
+- 31 active study topics should be available.
+- Every topic should belong to a valid domain.
+- Required fields should not be empty.
+
+Result:
+
+- 31 active study topics were loaded successfully.
+- The topics were distributed across five domains.
+
+Status: **PASS**
+
+### 3.4 Original Experience-Based Paths
+
+The original prototype contained the following learning paths:
+
+| Experience category | Original duration |
+|---|---:|
+| Fresher | 12 weeks |
+| 0–5 years | 10 weeks |
+| 5–9 years | 8 weeks |
+| 9+ years | 6 weeks |
+
+These paths were tested successfully during the first version of the prototype.
+
+Following feedback, the new nomination workflow no longer depends on these fixed durations. The Pod Lead now provides the learner’s target dates, and the platform creates a dynamic schedule.
+
+Status: **PASS**
+
+## 4. Study-Topic Pipeline Testing
+
+The study-topic pipeline was tested to confirm that new RAW records could be validated and processed into the CORE schema.
+
+The pipeline contains:
+
+- A RAW inbox table.
+- A Snowflake Stream.
+- A processing stored procedure.
+- A scheduled Task.
+- A rejected-records table.
+- A pipeline run-log table.
+
+Expected result:
+
+- Valid topics should be merged into `CORE.STUDY_TOPICS`.
+- Invalid topics should be stored with a rejection reason.
+- Every execution should be written to the pipeline run log.
+
+Result:
+
+- Valid topic records were processed successfully.
+- The CORE table contained 31 topics.
+- Pipeline execution details were recorded.
+
+Status: **PASS**
+
+## 5. Learner Registration Testing
+
+The learner-registration procedure was tested using a demo learner.
+
+Expected result:
+
+- A learner record should be created.
+- A certification enrollment should be created.
+- All 31 topics should be assigned to the learner.
+- Every topic should initially have the status `NOT_STARTED`.
+
+Result:
+
+| Validation | Result |
+|---|---:|
+| Assigned topics | 31 |
+| Completed topics at initial registration | 0 |
+| In-progress topics at initial registration | 0 |
+| Not-started topics at initial registration | 31 |
+
+The registration procedure returned a success message.
+
+Status: **PASS**
+
+## 6. Learning Activity and Progress Testing
+
+The learning-activity pipeline was tested by recording topic activity for a learner.
+
+Expected result:
+
+- A valid activity should update the related topic-progress record.
+- The status should change based on completion percentage.
+- Study duration should be converted from minutes to hours.
+- Activity timestamps should be updated.
+
+Observed result:
+
+| Field | Result |
+|---|---|
+| Topic | D01_T01 |
+| Progress status | COMPLETED |
+| Completion percentage | 100 |
+| Hours spent | 1.25 |
+| Started timestamp | Recorded |
+| Completed timestamp | Recorded |
+| Last activity timestamp | Recorded |
+
+Status: **PASS**
+
+## 7. Learner-Information CSV Pipeline Testing
+
+The learner-information pipeline was tested using:
 
 - `data/learner_information.csv`
-- `data/learner_progress.csv`
 - `tests/data/invalid_learners.csv`
-- `tests/data/invalid_progress.csv`
 - `tests/data/corrected_learners.csv`
-- `tests/data/corrected_progress.csv`
 
-These files form the initial candidate golden record set. Formal approval is still required before identifying them as an approved golden record set.
+### 7.1 Valid Learner Records
 
-## 3. Test Summary
+Expected result:
 
-| Test ID | Test scenario | Expected result | Actual result | Status |
-|---|---|---|---|---|
-| TC-001 | Register three demo learners | Three learners created | Three learners created | PASS |
-| TC-002 | Create active enrollments | Each learner receives an active enrollment | Three active enrollments created | PASS |
-| TC-003 | Assign experience-based paths | Correct path assigned from Snowflake experience | Fresher and 0-5 year paths assigned correctly | PASS |
-| TC-004 | Initialize assigned topics | Each learner receives 31 topic-progress rows | 31 topics created for each learner | PASS |
-| TC-005 | Process learner source records | Three learner records accepted | Three learner records accepted | PASS |
-| TC-006 | Process progress source records | Three progress records accepted | Three progress records accepted | PASS |
-| TC-007 | Reject invalid records | Negative experience and 150 percent completion rejected | Both records rejected with expected reasons | PASS |
-| TC-008 | Resolve corrected records | Corrected records processed and rejections marked resolved | Both rejection records marked resolved | PASS |
-| TC-009 | Prevent duplicate learners | No duplicate employee IDs | Zero duplicate employee IDs found | PASS |
-| TC-010 | Prevent duplicate activities | No duplicate activity IDs | Zero duplicate activity IDs found | PASS |
-| TC-011 | Correct learner progress | EMP_DEMO_001 reaches 100 percent and 1.00 hours | COMPLETED, 100 percent and 1.00 hours | PASS |
-| TC-012 | Complete learner progress | EMP_DEMO_002 reaches 100 percent and 1.25 hours | COMPLETED, 100 percent and 1.25 hours | PASS |
-| TC-013 | Automatic learner Task | Stream-triggered Task registers learner | EMP_TASK_001 created with PATH_5_9 and 31 topics | PASS |
-| TC-014 | Automatic progress Task | Task processes RAW progress into learning events | ACT_TASK_001 created successfully | PASS |
-| TC-015 | Automatic learning-event Task | Task updates final topic progress | D01_T02 updated to IN_PROGRESS, 10 percent and 0.33 hours | PASS |
+- Valid learner records should be registered.
+- Enrollments should be created.
+- Topic-progress records should be initialized.
 
-## 4. Valid Learner Test
+Result:
 
-Two fictional learner records were uploaded through `learner_information.csv`.
+- Valid learner records were processed successfully.
+- Each registered learner received 31 assigned topics.
 
-The learner pipeline produced the following result:
+Status: **PASS**
+
+### 7.2 Invalid Learner Record
+
+An intentional invalid record was created with:
 
 ```text
-Records received: 2
-Records accepted: 2
-Records rejected: 0
-Run status: SUCCESS
+Snowflake experience = -2
 ```
 
-The first learner had zero years of Snowflake experience and was assigned to `PATH_FRESHER`.
+Expected result:
 
-The second learner had three years of Snowflake experience and was assigned to `PATH_0_5`.
+- The record should be rejected.
+- The rejection reason should be stored.
 
-Each learner received 31 initialized topic-progress records.
-
-## 5. Valid Progress Test
-
-Two fictional progress records were uploaded through `learner_progress.csv`.
-
-The progress pipeline produced the following result:
-
-```text
-Records received: 2
-Records accepted: 2
-Records rejected: 0
-Run status: SUCCESS
-```
-
-The final results were:
-
-- `EMP_DEMO_001` initially reached 25 percent with 0.50 study hours.
-- `EMP_DEMO_002` reached 100 percent with 1.25 study hours.
-
-## 6. Invalid Learner Test
-
-The invalid learner record contained:
-
-```text
-Snowflake experience: -2
-```
-
-The record was rejected with the reason:
+Observed rejection reason:
 
 ```text
 Snowflake experience must be zero or greater.
 ```
 
-The value was corrected to two years. The corrected record was uploaded again and processed successfully.
+Status: **PASS**
 
-The learner was assigned to:
+### 7.3 Corrected Learner Record
+
+The invalid experience value was corrected and submitted again.
+
+Expected result:
+
+- The corrected learner should be registered.
+- The earlier rejection should be marked as resolved.
+
+Result:
+
+- The corrected learner was registered.
+- `RESOLVED_FLAG` changed to `TRUE`.
+- `RESOLVED_AT` was populated.
+
+Status: **PASS**
+
+## 8. Learner-Progress CSV Pipeline Testing
+
+The learner-progress pipeline was tested using:
+
+- `data/learner_progress.csv`
+- `tests/data/invalid_progress.csv`
+- `tests/data/corrected_progress.csv`
+
+### 8.1 Valid Progress Records
+
+Expected result:
+
+- Valid activities should update topic progress.
+- Completion percentage, status and study hours should be updated.
+
+Result:
+
+- Two valid progress records were received.
+- Two records were accepted.
+- No records were rejected.
+
+Status: **PASS**
+
+### 8.2 Invalid Progress Record
+
+An intentional invalid progress record was created with:
 
 ```text
-Experience level: EXP_0_5
-Learning path: PATH_0_5
+Completion percentage = 150
 ```
 
-The original rejection was marked as resolved.
+Expected result:
 
-## 7. Invalid Progress Test
+- The record should be rejected because the valid range is 0–100.
 
-The invalid progress record contained:
-
-```text
-Completion percentage: 150
-```
-
-The record was rejected with the reason:
+Observed rejection reason:
 
 ```text
 Completion percentage must be between 0 and 100.
 ```
 
-The completion percentage was corrected to 100. The corrected record was uploaded again and processed successfully.
+Status: **PASS**
 
-The final progress for `EMP_DEMO_001` and `D01_T01` was:
+### 8.3 Corrected Progress Record
+
+The completion percentage was corrected to `100`.
+
+Expected result:
+
+- The corrected activity should be processed.
+- The topic should be marked as completed.
+- The earlier rejection should be resolved.
+
+Result:
+
+- The corrected record was processed successfully.
+- Topic status changed to `COMPLETED`.
+- Completion percentage changed to `100`.
+- The earlier rejection was marked as resolved.
+
+Status: **PASS**
+
+## 9. Pipeline Run-Log Testing
+
+The run-log tables were checked after each pipeline execution.
+
+Expected result:
+
+Every execution should record:
+
+- Pipeline name.
+- Run status.
+- Records received.
+- Records accepted.
+- Records rejected.
+- Run message.
+- Start time.
+- Completion time.
+
+Result:
+
+- Successful executions were recorded.
+- Executions with zero new records were also recorded correctly.
+- Zero-record executions occurred because the Stream had already consumed the previously processed records.
+
+Status: **PASS**
+
+## 10. Data-Quality Testing
+
+The platform data-quality tests checked:
+
+- Required fields.
+- Duplicate identifiers.
+- Invalid experience values.
+- Invalid completion percentages.
+- Invalid topic references.
+- Missing learner references.
+- Learning-plan completeness.
+- Enrollment and progress consistency.
+
+Result:
+
+- All platform data-quality tests passed.
+
+Status: **PASS**
+
+## 11. Role-Based Access Testing
+
+The platform roles were created using the approved functional-role naming convention:
+
+- `FR_CERT_ENABLEMENT_LEARNER_DEV`
+- `FR_CERT_ENABLEMENT_PROGRAM_MANAGER_DEV`
+- `FR_CERT_ENABLEMENT_PLATFORM_ADMIN_DEV`
+
+Expected result:
+
+- Learner access should be limited to required learner features.
+- Program managers should have monitoring and management access.
+- Platform administrators should have administrative access.
+
+Result:
+
+- The required roles and grants were created successfully.
+
+Status: **PASS**
+
+## 12. Snowflake Naming-Convention Validation
+
+The Snowflake objects were renamed according to the shared naming standards.
+
+Examples include:
+
+| Object type | Implemented name |
+|---|---|
+| Database | DB_CERT_ENABLEMENT_DEV |
+| Warehouse | WH_CERT_ENABLEMENT_DEV_XS |
+| Internal stage | INT_RAW_CERTIFICATION_UPLOAD_DEV |
+| Stream | STR_LEARNER_INFORMATION_INBOX |
+| Stored procedure | SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION |
+| Task | TSK_PROCESS_LEARNER_INFORMATION_1MIN |
+| View | VW_LEARNER_PROGRESS |
+| Functional role | FR_CERT_ENABLEMENT_LEARNER_DEV |
+
+Result:
+
+- The SQL scripts, tests and documentation were updated.
+- Searches for the previous database and warehouse names returned no results.
+
+Status: **PASS**
+
+## 13. Pod Configuration Testing
+
+Pod information was uploaded using:
 
 ```text
-Status: COMPLETED
-Completion: 100 percent
-Hours spent: 1.00
+data/pods.csv
 ```
 
-The original rejection was marked as resolved.
+Test Pod:
 
-## 8. Automatic Task Testing
+| Field | Value |
+|---|---|
+| Pod ID | POD_001 |
+| Pod name | Snowflake Data Engineering |
+| Pod Lead employee ID | LEAD_DEMO_001 |
+| Active flag | TRUE |
 
-The learner-information and learner-progress Tasks were resumed temporarily for testing.
+Expected result:
 
-A fictional learner named `EMP_TASK_001` was inserted into the RAW learner inbox. The learner Task detected the Stream data and registered the learner automatically.
+- The Pod should be created in `CORE.PODS`.
+- The Pod Lead details should be stored.
+- The Pod should be active.
 
-The learner received:
+Result:
+
+- `POD_001` was created successfully.
+- The Pod Lead information was stored.
+- The Pod was active.
+
+Status: **PASS**
+
+## 14. Pod Lead Nomination Testing
+
+Certification nominations were uploaded using:
 
 ```text
-Experience level: EXP_5_9
-Learning path: PATH_5_9
-Assigned topics: 31
+data/certification_nominations.csv
 ```
 
-A progress record named `ACT_TASK_001` was inserted into the RAW progress inbox. The progress Task created a learning event, and the learning-events Task updated topic progress.
+The nomination included:
 
-The final result was:
+- Employee information.
+- Pod information.
+- Pod Lead employee ID.
+- Certification ID.
+- Target completion date.
+- Target exam date.
+- Nomination reason.
+
+Expected result:
+
+- Only the authorized Pod Lead should be allowed to nominate an employee.
+- A successful nomination should create the learner, enrollment and dynamic topic plan.
+
+Result:
+
+- Valid nominations were processed successfully.
+- Learner and enrollment records were created.
+- All 31 topics were assigned.
+
+Status: **PASS**
+
+## 15. Dynamic Learning-Plan Testing
+
+The dynamic-plan logic was tested using two employees with different Pod Lead target dates.
+
+| Employee | Target completion date | Target exam date | Topics | First week | Last week |
+|---|---|---|---:|---:|---:|
+| Asha Rao | 15 December 2026 | Provided by Pod Lead | 31 | 1 | 12 |
+| Rahul Mehta | 30 November 2026 | 7 December 2026 | 31 | 1 | 10 |
+
+Expected result:
+
+- Both learners should receive all 31 topics.
+- The number of weeks should be calculated using the target completion date.
+- The plan should not use a fixed duration based only on Snowflake experience.
+
+Result:
+
+- Asha Rao received a 12-week plan.
+- Rahul Mehta received a 10-week plan.
+- Both learners received 31 topics.
+- Both enrollments had `PLAN_TYPE = DYNAMIC`.
+
+This confirms that the completion timeline is controlled by the Pod Lead’s target dates.
+
+Status: **PASS**
+
+## 16. Unauthorized Pod Lead Testing
+
+An intentional invalid nomination was submitted using:
 
 ```text
-Topic: D01_T02
-Status: IN_PROGRESS
-Completion: 10 percent
-Hours spent: 0.33
+Pod Lead employee ID = WRONG_LEAD_999
 ```
 
-All Tasks were suspended after testing to protect the trial-account credits.
+Expected result:
 
-## 9. Pipeline Audit Validation
+- The nomination should be rejected.
+- The rejection reason should explain that the Pod Lead is not authorized.
 
-Pipeline runs were recorded in:
+Observed rejection reason:
 
 ```text
-DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PIPELINE_RUN_LOG
+Nomination failed: The supplied Pod Lead is not authorised for this Pod.
 ```
 
-Each record included:
+Status: **PASS**
 
-- Pipeline name
-- Start and completion times
-- Run status
-- Records received
-- Records accepted
-- Records rejected
-- Processing message
+## 17. Corrected Nomination Testing
 
-Rejected records were stored in:
+The rejected nomination was submitted again using the correct Pod Lead:
 
 ```text
-DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_REJECTED_RECORDS
+Pod Lead employee ID = LEAD_DEMO_001
 ```
 
-Each rejection included:
+Expected result:
 
-- Pipeline name
-- Source record ID
-- Source filename
-- Raw record
-- Rejection reason
-- Rejection timestamp
-- Resolution status
+- The corrected nomination should be accepted.
+- The learner should receive a dynamic learning plan.
+- The earlier rejection should be marked as resolved.
 
-## 10. Observations
+Result:
 
-- Re-executing a processing procedure after its Stream has been consumed returns zero received records. This is expected and does not indicate a failure.
-- The initial learner procedure loop failed because the query was used directly in the loop. It was corrected by assigning the query to a Snowflake `RESULTSET` before iteration.
-- RAW columns use text types so invalid values can be captured and rejected by the validation procedure instead of causing the complete CSV load to fail.
-- Successfully processed source IDs are recorded to prevent duplicate acceptance.
-- Rejected records can be corrected and uploaded again because rejected source IDs are not added to the processed-record table.
-- Scheduled Tasks were tested successfully and then suspended to reduce trial-account usage.
+- The corrected nomination was accepted.
+- Rahul Mehta received a 10-week dynamic plan.
+- The earlier rejection was resolved.
 
-## 11. Final Result
+Status: **PASS**
 
-All 15 functional, validation and automation tests passed.
+## 18. Pod Nomination Pipeline Testing
 
-The learner-information and learner-progress CSV pipelines are ready for the prototype demonstration.
+The Pod and nomination pipeline returned:
 
-The current input method is manual CSV upload. The future roadmap is to connect the approved Mastech Excel-based source and automatically load learner and progress data into the Snowflake RAW layer.
+```text
+Processing completed. Records received: 2, accepted: 2, rejected: 0.
+```
+
+Expected result:
+
+- The Pod record should be accepted.
+- The valid nomination should be accepted.
+- The pipeline execution should be recorded.
+
+Result:
+
+- Two records were received.
+- Two records were accepted.
+- No records were rejected during the valid execution.
+
+Status: **PASS**
+
+## 19. Weekly Progress Reminder Testing
+
+The weekly reminder feature contains:
+
+- Reminder configuration.
+- Reminder-candidate view.
+- Reminder stored procedure.
+- Reminder execution log.
+- Weekly scheduled Task.
+
+Task:
+
+```text
+TSK_SEND_PROGRESS_REMINDERS_WEEKLY
+```
+
+Schedule:
+
+```text
+Every Monday at 9:00 AM Asia/Kolkata
+```
+
+### 19.1 Reminder Simulation
+
+The reminder procedure was tested with email delivery disabled.
+
+Observed result:
+
+| Employee | Status |
+|---|---|
+| EMP_DEMO_101 | SIMULATED |
+
+Expected result:
+
+- An eligible learner should appear in the reminder log.
+- No real email should be sent in simulation mode.
+- No failure message should be recorded.
+
+Result:
+
+- A simulated reminder was recorded successfully.
+- No failure message was recorded.
+
+Status: **PASS**
+
+### 19.2 Live Email Limitation
+
+Live email delivery was not tested.
+
+Snowflake email notifications require the recipient email address to belong to a verified Snowflake user in the same account. The prototype used demonstration email addresses.
+
+This is an environment prerequisite and not a platform defect.
+
+Status: **NOT EXECUTED – ENVIRONMENT PREREQUISITE**
+
+## 20. Scheduled Task Validation
+
+The following automated Tasks were created and verified:
+
+- Study-topic processing Task.
+- Learning-event processing Task.
+- Learner-information processing Task.
+- Learner-progress processing Task.
+- Certification-nomination processing Task.
+- Weekly progress-reminder Task.
+
+The Tasks were suspended after testing to reduce Snowflake trial-account credit usage.
+
+Status: **PASS**
+
+## 21. CSV Upload Documentation
+
+The following upload documentation was prepared:
+
+```text
+docs/CSV_UPLOAD_GUIDE.md
+```
+
+The guide covers:
+
+- Required CSV files.
+- Mandatory fields.
+- Accepted formats.
+- Date formats.
+- Validation rules.
+- Upload steps.
+- Error-checking process.
+- Correction and reprocessing.
+- Security guidelines.
+
+Status: **PASS**
+
+## 22. Git Validation
+
+The following artifacts were stored in Git:
+
+- SQL deployment scripts.
+- CSV templates.
+- Test CSV files.
+- Data-quality tests.
+- Pod and nomination tests.
+- Deployment documentation.
+- Design documentation.
+- CSV upload guidelines.
+- Test results.
+
+The work was developed in:
+
+```text
+feature/pod-dynamic-plan-reminders
+```
+
+Result:
+
+- Changes were committed successfully.
+- Changes were pushed to GitHub.
+- The working tree was clean after the commits.
+
+Status: **PASS**
+
+## 23. Final Test Summary
+
+| Test area | Status |
+|---|---|
+| Foundation data | PASS |
+| Study-topic pipeline | PASS |
+| Learner registration | PASS |
+| Learning-activity processing | PASS |
+| Learner-information CSV pipeline | PASS |
+| Learner-progress CSV pipeline | PASS |
+| Invalid-record handling | PASS |
+| Data-quality checks | PASS |
+| Role-based access | PASS |
+| Naming standards | PASS |
+| Pod configuration | PASS |
+| Pod Lead nomination | PASS |
+| Dynamic timeline | PASS |
+| Unauthorized Pod Lead rejection | PASS |
+| Corrected nomination processing | PASS |
+| Pipeline monitoring | PASS |
+| Weekly reminder simulation | PASS |
+| Live email delivery | NOT EXECUTED – ENVIRONMENT PREREQUISITE |
+| CSV upload documentation | PASS |
+| Git version control | PASS |
+
+## 24. Final Result
+
+The prototype passed the completed functional, validation, pipeline, security, dynamic-planning and automation tests.
+
+The platform now supports:
+
+- Pod Lead certification nominations.
+- Pod-based learner registration.
+- Pod Lead-provided completion and exam dates.
+- Dynamic learning-plan creation.
+- Learner-progress tracking.
+- CSV validation and rejection handling.
+- Pipeline monitoring.
+- Weekly progress-reminder simulation.
+- Approved Snowflake object-naming standards.
+- Clear CSV upload instructions.
+
+The weekly reminder Task remains suspended after testing to avoid unnecessary Snowflake trial-account usage.
