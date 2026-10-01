@@ -18,6 +18,255 @@ The platform provides structured learning paths for Snowflake certifications. It
 
 The current prototype supports SnowPro Core. The design can be extended to support additional Snowflake certifications in the future.
 
+## Changes Since the Previous Review
+
+The following improvements were completed based on feedback from the previous review.
+
+| Feedback | Change implemented | Status |
+|---|---|---|
+| Follow the approved Snowflake naming standards | Database, warehouse, stages, Streams, procedures, Tasks, views and roles were renamed using the approved standards. | Completed |
+| Introduce Pod Lead-based nominations | Employees are nominated by an authorized Pod Lead instead of registering directly. | Completed |
+| Remove fixed experience-based timelines | The Pod Lead provides the target completion date, and the system generates a dynamic schedule. | Completed |
+| Simplify the nomination input | The separate Pod and nomination CSV files were replaced with one certification-nomination CSV. | Completed |
+| Do not expose technical IDs | Pod ID, certification ID, nomination ID and enrollment ID are resolved or generated inside Snowflake. | Completed |
+| Standardize incoming data | Names are trimmed, unnecessary spaces are removed, emails are normalized and certification names are validated against values stored in Snowflake. | Completed |
+| Track inactive learners | A weekly reminder framework was created and tested in simulation mode. | Completed |
+| Notify the Pod Lead also | The reminder will be updated to include both the employee and the corresponding Pod Lead. | Planned for Monday |
+| Support ongoing updates | Separate initial-load and incremental-update flows will be documented and tested. | Planned for Monday |
+| Perform a live email test | A controlled test will be completed using verified Snowflake email addresses. | Planned for Monday |
+
+## Updated Nomination Input
+
+The earlier design required two files:
+
+- `pods.csv`
+- `certification_nominations.csv`
+
+The updated design requires only one file:
+
+```text
+data/certification_nominations.csv
+```
+
+The unified file contains only business-friendly information:
+
+- Employee ID
+- Learner name
+- Learner email
+- Department
+- Snowflake experience
+- Pod name
+- Pod Lead name
+- Certification name
+- Target completion date
+
+The user does not provide technical identifiers such as:
+
+- Pod ID
+- Pod Lead employee ID
+- Certification ID
+- Nomination ID
+- Enrollment ID
+- Source record ID
+
+Snowflake resolves or generates these internal identifiers while processing the nomination.
+
+## Updated Nomination Workflow
+
+```text
+Pod Lead completes one nomination CSV
+→ CSV is uploaded to the Snowflake internal stage
+→ Data is copied into the RAW nomination inbox
+→ A Stream captures new records
+→ The processing procedure validates and standardizes the records
+→ Pod and Pod Lead names are validated against the approved Pod configuration
+→ The certification name is matched with the certification stored in Snowflake
+→ Internal identifiers are generated
+→ Valid records are stored in CORE
+→ A dynamic 31-topic schedule is created
+→ Invalid records are stored with a rejection reason
+→ The pipeline result is recorded in the run log
+```
+
+## Data Standardization
+
+The nomination pipeline standardizes the incoming information before processing it.
+
+The current standardization includes:
+
+- Removing leading and trailing spaces.
+- Replacing unnecessary spaces within names.
+- Converting email addresses to lowercase.
+- Checking that Snowflake experience is a valid non-negative number.
+- Checking that the target completion date uses the correct format.
+- Matching Pod and Pod Lead names without case sensitivity.
+- Matching the certification name with an active certification in Snowflake.
+- Using the company employee ID as the learner's stable business identifier.
+
+This reduces duplicate records and prevents users from entering internal warehouse identifiers.
+
+## Internal ID Management
+
+The Pod Lead enters only understandable business information.
+
+Snowflake handles the technical identifiers internally:
+
+| Internal field | How it is handled |
+|---|---|
+| Pod ID | Resolved from the Pod name and authorized Pod Lead name |
+| Pod Lead employee ID | Retrieved from the approved Pod configuration |
+| Certification ID | Resolved from the certification name |
+| Learner ID | Generated from the company employee ID |
+| Nomination ID | Generated from the employee and certification |
+| Enrollment ID | Generated from the employee and certification |
+| Source record ID | Generated internally for rejection tracking |
+| Target exam date | Automatically set to seven days after the completion date |
+
+## Dynamic Schedule Generation
+
+The Pod Lead discusses the learning timeline with the employee and provides the target completion date.
+
+The platform then:
+
+1. Uses the nomination-processing date as the plan start date.
+2. Calculates the available number of weeks.
+3. Retrieves all active topics for the selected certification.
+4. Distributes the topics across the available weeks.
+5. Creates one learner-specific topic plan.
+6. Initializes progress tracking for all assigned topics.
+
+Snowflake experience is stored as learner information, but the platform does not use it to impose a fixed duration.
+
+The Pod Lead is responsible for selecting a realistic target date after considering the employee's experience and availability.
+
+## Latest Test Result
+
+The unified nomination pipeline was tested using two learner records.
+
+| Validation | Result |
+|---|---|
+| Records received | 2 |
+| Records accepted | 2 |
+| Records rejected | 0 |
+| Topics assigned per learner | 31 |
+| Plan type | DYNAMIC |
+| Pod Lead validation | Passed |
+| Certification-name validation | Passed |
+| Internal ID generation | Passed |
+| Pipeline run logging | Passed |
+
+The latest generated plans were:
+
+| Learner | Target completion date | Assigned topics | Generated duration | Plan type |
+|---|---:|---:|---:|---|
+| Asha Rao | 15 December 2026 | 31 | 11 weeks | DYNAMIC |
+| Rahul Mehta | 30 November 2026 | 31 | 9 weeks | DYNAMIC |
+
+The generated duration depends on the number of weeks between the processing date and the target completion date.
+
+## Notification Status
+
+The weekly reminder framework is already available and was tested in simulation mode.
+
+### Current behavior
+
+The reminder process:
+
+- Identifies active learners.
+- Confirms that the enrollment is active.
+- Checks whether progress has not been updated within seven days.
+- Prepares the reminder information.
+- Records the result in the reminder log.
+- Runs through a weekly scheduled Snowflake Task when enabled.
+
+The Task is configured to run every Monday at 9:00 AM in the Asia/Kolkata timezone.
+
+### Why simulation mode was used
+
+The first test used fictional email addresses. Snowflake live email delivery requires eligible and verified recipient addresses.
+
+Simulation mode allowed the complete reminder-selection and logging logic to be tested without attempting to send an email to an invalid recipient.
+
+### Notification improvement planned
+
+Based on the latest review, the notification will be updated to include both:
+
+- The enrolled employee
+- The employee's Pod Lead
+
+The Pod Lead email will be retrieved from the internal Pod configuration. It will not need to be entered in every nomination CSV.
+
+A controlled live-email test will be completed using verified Snowflake email addresses.
+
+## Initial and Incremental Data Flows
+
+### Initial nomination flow
+
+The initial flow is used when employees are nominated for the first time.
+
+```text
+Approved CSV template is provided
+→ Pod Lead enters employee and nomination details
+→ CSV is uploaded
+→ Data is validated and standardized
+→ New learner and enrollment records are created
+→ Dynamic plans and topic progress are initialized
+```
+
+### Incremental update flow
+
+The incremental flow will be used for future updates.
+
+```text
+Existing information is provided to the Pod Lead
+→ Pod Lead updates the existing information
+→ New employees are added as new rows
+→ Updated CSV is uploaded
+→ Existing records are updated
+→ New records are inserted
+→ Duplicate learner creation is prevented
+```
+
+Existing employee IDs and standardized certification names should remain unchanged during incremental updates.
+
+## Source Control Status
+
+The changes were developed in:
+
+```text
+feature/pod-dynamic-plan-reminders
+```
+
+The unified nomination changes were committed and pushed to GitHub.
+
+The feature branch has not yet been merged into `main`. It will be merged only after:
+
+1. Functional testing is completed.
+2. A peer review is completed.
+3. Review comments are addressed.
+4. Manager approval is received.
+
+## Remaining Work Before Monday
+
+- Update reminder recipients to include the Pod Lead.
+- Perform the controlled live-email test.
+- Complete and test the incremental update flow.
+- Update the automated test scripts for the unified CSV.
+- Update the CSV upload guide.
+- Get a peer review from Nitheesh or Thiagarajan.
+- Apply the review comments.
+- Merge the feature branch into `main` after approval.
+
+## Current Conclusion
+
+The platform now accepts one simple nomination CSV instead of two separate files.
+
+The Pod Lead provides understandable business information, while Snowflake handles validation, standardization, internal ID generation, enrollment creation and dynamic schedule generation.
+
+The unified nomination pipeline has been successfully tested with two records. Both records were accepted, and each learner received all 31 SnowPro Core topics.
+
+The remaining improvements are notification enhancement, incremental-flow testing, documentation updates and peer review before the planned Monday release.
+
 ### In Scope
 
 - Initial Snowflake environment configuration
