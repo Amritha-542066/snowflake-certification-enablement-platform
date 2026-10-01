@@ -3,41 +3,21 @@
   Step 15: Pod nomination and dynamic learning plan
 
   Purpose:
-  - Store Pod and Pod Lead information.
-  - Allow a Pod Lead to nominate an employee for certification.
-  - Allow the Pod Lead to provide target completion and exam dates.
-  - Create a learner-specific study schedule dynamically.
-  - Stop using Snowflake experience to select a fixed timeline.
-
-  Important:
-  - Snowflake experience is retained as learner-profile information.
-  - It is not used to calculate the learning-plan duration.
-  - The Pod Lead controls the target dates.
+  - Keep Snowflake-generated identifiers inside Snowflake.
+  - Accept business-friendly Pod, Pod Lead and certification names.
+  - Validate the supplied Pod Lead against the selected Pod.
+  - Generate a learner-specific schedule from the Pod Lead's completion date.
 ==============================================================================*/
 
-
-/*------------------------------------------------------------------------------
-  1. Select the required Snowflake environment
-------------------------------------------------------------------------------*/
-
 USE ROLE ACCOUNTADMIN;
-
 USE WAREHOUSE WH_CERT_ENABLEMENT_DEV_XS;
-
 USE DATABASE DB_CERT_ENABLEMENT_DEV;
-
 USE SCHEMA CORE;
 
 
 /*==============================================================================
-  2. POD MASTER TABLE
+  1. CORE TABLES
 ==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Stores each Pod and its authorised Pod Lead.
-
-  The Pod Lead employee ID is used to validate certification nominations.
-------------------------------------------------------------------------------*/
 
 CREATE TABLE IF NOT EXISTS CORE.PODS (
     POD_ID                    VARCHAR(30)   NOT NULL,
@@ -49,24 +29,9 @@ CREATE TABLE IF NOT EXISTS CORE.PODS (
     CREATED_AT                TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
     UPDATED_AT                TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
 
-    CONSTRAINT PK_PODS
-        PRIMARY KEY (POD_ID)
+    CONSTRAINT PK_PODS PRIMARY KEY (POD_ID)
 );
 
-
-/*==============================================================================
-  3. POD MEMBERSHIP TABLE
-==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Stores the relationship between an employee and a Pod.
-
-  For the current prototype, membership is created when the employee is
-  successfully nominated.
-
-  Future roadmap:
-  Load approved Pod membership directly from the Mastech source file.
-------------------------------------------------------------------------------*/
 
 CREATE TABLE IF NOT EXISTS CORE.POD_MEMBERS (
     POD_ID                    VARCHAR(30)   NOT NULL,
@@ -75,58 +40,27 @@ CREATE TABLE IF NOT EXISTS CORE.POD_MEMBERS (
     JOINED_AT                 TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
     UPDATED_AT                TIMESTAMP_NTZ  DEFAULT CURRENT_TIMESTAMP(),
 
-    CONSTRAINT PK_POD_MEMBERS
-        PRIMARY KEY (POD_ID, EMPLOYEE_ID)
+    CONSTRAINT PK_POD_MEMBERS PRIMARY KEY (POD_ID, EMPLOYEE_ID)
 );
 
-
-/*==============================================================================
-  4. CERTIFICATION NOMINATION TABLE
-==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Stores the certification recommendation made by the Pod Lead.
-
-  The Pod Lead supplies:
-  - Certification
-  - Target completion date
-  - Target exam date
-  - Optional nomination reason
-------------------------------------------------------------------------------*/
 
 CREATE TABLE IF NOT EXISTS CORE.CERTIFICATION_NOMINATIONS (
     NOMINATION_ID             VARCHAR(50)    NOT NULL,
     EMPLOYEE_ID               VARCHAR(50)    NOT NULL,
-    POD_ID                    VARCHAR(30)    NOT NULL,
-    POD_LEAD_EMPLOYEE_ID      VARCHAR(50)    NOT NULL,
-    CERTIFICATION_ID          VARCHAR(20)    NOT NULL,
-    NOMINATION_DATE           DATE           NOT NULL,
-    TARGET_COMPLETION_DATE    DATE           NOT NULL,
-    TARGET_EXAM_DATE          DATE           NOT NULL,
+    POD_ID                    VARCHAR(30)     NOT NULL,
+    POD_LEAD_EMPLOYEE_ID      VARCHAR(50)     NOT NULL,
+    CERTIFICATION_ID          VARCHAR(20)     NOT NULL,
+    NOMINATION_DATE           DATE            NOT NULL,
+    TARGET_COMPLETION_DATE    DATE            NOT NULL,
+    TARGET_EXAM_DATE          DATE            NOT NULL,
     NOMINATION_REASON         VARCHAR(1000),
-    NOMINATION_STATUS         VARCHAR(30)     DEFAULT 'APPROVED',
-    CREATED_AT                TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
-    UPDATED_AT                TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
+    NOMINATION_STATUS         VARCHAR(30)      DEFAULT 'APPROVED',
+    CREATED_AT                TIMESTAMP_NTZ    DEFAULT CURRENT_TIMESTAMP(),
+    UPDATED_AT                TIMESTAMP_NTZ    DEFAULT CURRENT_TIMESTAMP(),
 
-    CONSTRAINT PK_CERTIFICATION_NOMINATIONS
-        PRIMARY KEY (NOMINATION_ID)
+    CONSTRAINT PK_CERTIFICATION_NOMINATIONS PRIMARY KEY (NOMINATION_ID)
 );
 
-
-/*==============================================================================
-  5. LEARNER-SPECIFIC DYNAMIC TOPIC PLAN
-==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Stores the schedule calculated separately for each learner.
-
-  Unlike PATH_TOPIC_PLAN, this table does not use a fixed Fresher,
-  0–5, 5–9 or 9+ year duration.
-
-  Topics are distributed between:
-  - Nomination date
-  - Pod Lead's target completion date
-------------------------------------------------------------------------------*/
 
 CREATE TABLE IF NOT EXISTS CORE.LEARNER_TOPIC_PLAN (
     ENROLLMENT_ID             VARCHAR(30)    NOT NULL,
@@ -139,40 +73,19 @@ CREATE TABLE IF NOT EXISTS CORE.LEARNER_TOPIC_PLAN (
     CREATED_AT                TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
     UPDATED_AT                TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
 
-    CONSTRAINT PK_LEARNER_TOPIC_PLAN
-        PRIMARY KEY (ENROLLMENT_ID, TOPIC_ID)
+    CONSTRAINT PK_LEARNER_TOPIC_PLAN PRIMARY KEY (ENROLLMENT_ID, TOPIC_ID)
 );
 
 
 /*==============================================================================
-  6. EXTEND THE EXISTING LEARNER AND ENROLLMENT TABLES
+  2. SUPPORT DYNAMIC ENROLLMENTS
 ==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Experience level is now optional.
-
-  Snowflake experience years may still be stored for reference, but the
-  experience category no longer determines the learner's study timeline.
-------------------------------------------------------------------------------*/
 
 ALTER TABLE CORE.LEARNERS
     ALTER COLUMN EXPERIENCE_LEVEL_CODE DROP NOT NULL;
 
-
-/*------------------------------------------------------------------------------
-  PATH_ID was required by the earlier fixed-path design.
-
-  It is now optional because dynamically planned learners do not use one of
-  the earlier experience-based paths.
-------------------------------------------------------------------------------*/
-
 ALTER TABLE CORE.ENROLLMENTS
     ALTER COLUMN PATH_ID DROP NOT NULL;
-
-
-/*------------------------------------------------------------------------------
-  Add nomination and Pod information to each enrollment.
-------------------------------------------------------------------------------*/
 
 ALTER TABLE CORE.ENROLLMENTS
     ADD COLUMN IF NOT EXISTS NOMINATION_ID VARCHAR(50);
@@ -188,22 +101,29 @@ ALTER TABLE CORE.ENROLLMENTS
 
 
 /*==============================================================================
-  7. POD-LEAD NOMINATION PROCEDURE
+  3. BUSINESS-FRIENDLY NOMINATION PROCEDURE
+
+  The caller supplies names. The procedure resolves internal Pod and
+  certification identifiers and generates learner, nomination and enrollment
+  identifiers inside Snowflake.
 ==============================================================================*/
 
-/*------------------------------------------------------------------------------
-  Procedure workflow:
+/* Remove the earlier 11-argument technical-ID version of the procedure. */
 
-  1. Validate learner, Pod Lead and target-date information.
-  2. Confirm that the supplied employee is the active lead of the Pod.
-  3. Create or update the learner.
-  4. Record the employee's Pod membership.
-  5. Create or update the certification nomination.
-  6. Create or update the certification enrollment.
-  7. Calculate the available number of study weeks.
-  8. Distribute active certification topics across those weeks.
-  9. Initialize progress tracking for all assigned topics.
-------------------------------------------------------------------------------*/
+DROP PROCEDURE IF EXISTS
+CONTROL.SP_NOMINATE_CERT_ENABLEMENT_LEARNER(
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    NUMBER,
+    VARCHAR,
+    VARCHAR,
+    VARCHAR,
+    DATE,
+    DATE,
+    VARCHAR
+);
 
 CREATE OR REPLACE PROCEDURE
 CONTROL.SP_NOMINATE_CERT_ENABLEMENT_LEARNER(
@@ -212,34 +132,34 @@ CONTROL.SP_NOMINATE_CERT_ENABLEMENT_LEARNER(
     P_EMAIL                        VARCHAR,
     P_DEPARTMENT_NAME              VARCHAR,
     P_SNOWFLAKE_EXPERIENCE_YEARS   NUMBER(4,1),
-    P_POD_ID                       VARCHAR,
-    P_POD_LEAD_EMPLOYEE_ID         VARCHAR,
-    P_CERTIFICATION_ID             VARCHAR,
-    P_TARGET_COMPLETION_DATE       DATE,
-    P_TARGET_EXAM_DATE             DATE,
-    P_NOMINATION_REASON            VARCHAR
+    P_POD_NAME                     VARCHAR,
+    P_POD_LEAD_NAME                VARCHAR,
+    P_CERTIFICATION_NAME           VARCHAR,
+    P_TARGET_COMPLETION_DATE       DATE
 )
 RETURNS VARCHAR
 LANGUAGE SQL
 EXECUTE AS OWNER
 AS
 $$
-
 DECLARE
-    V_POD_COUNT             NUMBER DEFAULT 0;
-    V_CERTIFICATION_COUNT   NUMBER DEFAULT 0;
-    V_TOPIC_COUNT           NUMBER DEFAULT 0;
-    V_PLAN_WEEKS            NUMBER DEFAULT 0;
+    V_POD_COUNT                    NUMBER DEFAULT 0;
+    V_CERTIFICATION_COUNT          NUMBER DEFAULT 0;
+    V_TOPIC_COUNT                  NUMBER DEFAULT 0;
+    V_PLAN_WEEKS                   NUMBER DEFAULT 0;
 
-    V_LEARNER_ID            VARCHAR;
-    V_NOMINATION_ID         VARCHAR;
-    V_ENROLLMENT_ID         VARCHAR;
+    V_POD_ID                       VARCHAR;
+    V_POD_LEAD_EMPLOYEE_ID         VARCHAR;
+    V_CERTIFICATION_ID             VARCHAR;
+    V_TARGET_EXAM_DATE             DATE;
+
+    V_LEARNER_ID                   VARCHAR;
+    V_NOMINATION_ID                VARCHAR;
+    V_ENROLLMENT_ID                VARCHAR;
 
 BEGIN
 
-    /*--------------------------------------------------------------------------
-      Validate mandatory learner information
-    --------------------------------------------------------------------------*/
+    /* Validate the business fields supplied by the Pod Lead. */
 
     IF (
         P_EMPLOYEE_ID IS NULL
@@ -248,123 +168,142 @@ BEGIN
         OR TRIM(P_LEARNER_NAME) = ''
         OR P_EMAIL IS NULL
         OR TRIM(P_EMAIL) = ''
-        OR P_POD_ID IS NULL
-        OR TRIM(P_POD_ID) = ''
-        OR P_POD_LEAD_EMPLOYEE_ID IS NULL
-        OR TRIM(P_POD_LEAD_EMPLOYEE_ID) = ''
-        OR P_CERTIFICATION_ID IS NULL
-        OR TRIM(P_CERTIFICATION_ID) = ''
+        OR P_DEPARTMENT_NAME IS NULL
+        OR TRIM(P_DEPARTMENT_NAME) = ''
+        OR P_POD_NAME IS NULL
+        OR TRIM(P_POD_NAME) = ''
+        OR P_POD_LEAD_NAME IS NULL
+        OR TRIM(P_POD_LEAD_NAME) = ''
+        OR P_CERTIFICATION_NAME IS NULL
+        OR TRIM(P_CERTIFICATION_NAME) = ''
     ) THEN
-
-        RETURN
-            'Nomination failed: Learner, Pod, Pod Lead and certification details are required.';
-
+        RETURN 'Nomination failed: Employee, Pod, Pod Lead and certification details are required.';
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Validate Snowflake experience
+    IF (
+        P_EMAIL NOT LIKE '%@%.%'
+    ) THEN
+        RETURN 'Nomination failed: A valid learner email is required.';
+    END IF;
 
-      Experience is stored only as learner-profile information.
-      It does not select or control the learning timeline.
-    --------------------------------------------------------------------------*/
 
     IF (
         P_SNOWFLAKE_EXPERIENCE_YEARS IS NULL
         OR P_SNOWFLAKE_EXPERIENCE_YEARS < 0
     ) THEN
-
-        RETURN
-            'Nomination failed: Snowflake experience must be zero or greater.';
-
+        RETURN 'Nomination failed: Snowflake experience must be zero or greater.';
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Validate the Pod Lead's target dates
-    --------------------------------------------------------------------------*/
-
-    IF (
-        P_TARGET_COMPLETION_DATE IS NULL
-        OR P_TARGET_EXAM_DATE IS NULL
-    ) THEN
-
-        RETURN
-            'Nomination failed: Target completion and exam dates are required.';
-
+    IF (P_TARGET_COMPLETION_DATE IS NULL) THEN
+        RETURN 'Nomination failed: Target completion date is required.';
     END IF;
 
 
     IF (P_TARGET_COMPLETION_DATE <= CURRENT_DATE()) THEN
-
-        RETURN
-            'Nomination failed: Target completion date must be in the future.';
-
+        RETURN 'Nomination failed: Target completion date must be in the future.';
     END IF;
 
 
-    IF (P_TARGET_EXAM_DATE < P_TARGET_COMPLETION_DATE) THEN
-
-        RETURN
-            'Nomination failed: Target exam date cannot be earlier than the target completion date.';
-
-    END IF;
-
-
-    /*--------------------------------------------------------------------------
-      Confirm that the Pod exists and the nominated lead is its active Pod Lead
-    --------------------------------------------------------------------------*/
+    /* Resolve and validate the internal Pod information using names. */
 
     SELECT
-        COUNT(*)
+        COUNT(*),
+        MIN(POD_ID),
+        MIN(POD_LEAD_EMPLOYEE_ID)
 
     INTO
-        :V_POD_COUNT
+        :V_POD_COUNT,
+        :V_POD_ID,
+        :V_POD_LEAD_EMPLOYEE_ID
 
     FROM CORE.PODS
 
-    WHERE UPPER(POD_ID) = UPPER(TRIM(:P_POD_ID))
-      AND UPPER(POD_LEAD_EMPLOYEE_ID) =
-          UPPER(TRIM(:P_POD_LEAD_EMPLOYEE_ID))
+    WHERE UPPER(
+              REGEXP_REPLACE(
+                  TRIM(POD_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          ) =
+          UPPER(
+              REGEXP_REPLACE(
+                  TRIM(:P_POD_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          )
+
+      AND UPPER(
+              REGEXP_REPLACE(
+                  TRIM(POD_LEAD_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          ) =
+          UPPER(
+              REGEXP_REPLACE(
+                  TRIM(:P_POD_LEAD_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          )
+
       AND ACTIVE_FLAG = TRUE;
 
 
     IF (V_POD_COUNT = 0) THEN
-
-        RETURN
-            'Nomination failed: The supplied Pod Lead is not authorised for this Pod.';
-
+        RETURN 'Nomination failed: The supplied Pod Lead is not authorised for the selected Pod.';
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Confirm that the requested certification is active
-    --------------------------------------------------------------------------*/
+    IF (V_POD_COUNT > 1) THEN
+        RETURN 'Nomination failed: More than one active Pod Lead configuration matched the supplied names.';
+    END IF;
+
+
+    /* Resolve the internal certification identifier using its business name. */
 
     SELECT
-        COUNT(*)
+        COUNT(*),
+        MIN(CERTIFICATION_ID)
 
     INTO
-        :V_CERTIFICATION_COUNT
+        :V_CERTIFICATION_COUNT,
+        :V_CERTIFICATION_ID
 
     FROM CORE.CERTIFICATIONS
 
-    WHERE UPPER(CERTIFICATION_ID) =
-          UPPER(TRIM(:P_CERTIFICATION_ID))
+    WHERE UPPER(
+              REGEXP_REPLACE(
+                  TRIM(CERTIFICATION_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          ) =
+          UPPER(
+              REGEXP_REPLACE(
+                  TRIM(:P_CERTIFICATION_NAME),
+                  '[[:space:]]+',
+                  ' '
+              )
+          )
+
       AND ACTIVE_FLAG = TRUE;
 
 
     IF (V_CERTIFICATION_COUNT = 0) THEN
-
-        RETURN
-            'Nomination failed: The requested certification is not active or does not exist.';
-
+        RETURN 'Nomination failed: The requested certification name is not active or does not exist.';
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Confirm that study topics exist for the certification
-    --------------------------------------------------------------------------*/
+    IF (V_CERTIFICATION_COUNT > 1) THEN
+        RETURN 'Nomination failed: More than one active certification matched the supplied name.';
+    END IF;
+
+
+    /* Confirm that the certification has active study topics. */
 
     SELECT
         COUNT(*)
@@ -377,26 +316,27 @@ BEGIN
     JOIN CORE.EXAM_DOMAINS ED
         ON ST.DOMAIN_ID = ED.DOMAIN_ID
 
-    WHERE UPPER(ED.CERTIFICATION_ID) =
-          UPPER(TRIM(:P_CERTIFICATION_ID))
+    WHERE ED.CERTIFICATION_ID = :V_CERTIFICATION_ID
       AND ST.ACTIVE_FLAG = TRUE
       AND ED.ACTIVE_FLAG = TRUE;
 
 
     IF (V_TOPIC_COUNT = 0) THEN
-
-        RETURN
-            'Nomination failed: No active study topics were found for the certification.';
-
+        RETURN 'Nomination failed: No active study topics were found for the certification.';
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Calculate the number of available study weeks
+    /* The exam date is generated internally as seven days after completion. */
 
-      The duration is calculated from today to the Pod Lead's target
-      completion date. It is not taken from a fixed experience-based path.
-    --------------------------------------------------------------------------*/
+    V_TARGET_EXAM_DATE :=
+        DATEADD(
+            'DAY',
+            7,
+            P_TARGET_COMPLETION_DATE
+        );
+
+
+    /* Calculate the dynamic duration from today to the completion date. */
 
     V_PLAN_WEEKS :=
         GREATEST(
@@ -413,9 +353,7 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Generate repeatable learner, nomination and enrollment IDs
-    --------------------------------------------------------------------------*/
+    /* Generate stable internal identifiers. */
 
     V_LEARNER_ID :=
         'LRN_' ||
@@ -434,7 +372,7 @@ BEGIN
             SHA2(
                 UPPER(TRIM(P_EMPLOYEE_ID)) ||
                 '_' ||
-                UPPER(TRIM(P_CERTIFICATION_ID)),
+                UPPER(V_CERTIFICATION_ID),
                 256
             ),
             20
@@ -447,16 +385,14 @@ BEGIN
             SHA2(
                 UPPER(TRIM(P_EMPLOYEE_ID)) ||
                 '_' ||
-                UPPER(TRIM(P_CERTIFICATION_ID)),
+                UPPER(V_CERTIFICATION_ID),
                 256
             ),
             20
         );
 
 
-    /*--------------------------------------------------------------------------
-      Create the learner or update the existing learner
-    --------------------------------------------------------------------------*/
+    /* Create or update the learner using the company employee ID as the key. */
 
     MERGE INTO CORE.LEARNERS AS TARGET
 
@@ -464,41 +400,33 @@ BEGIN
         SELECT
             :V_LEARNER_ID AS LEARNER_ID,
             TRIM(:P_EMPLOYEE_ID) AS EMPLOYEE_ID,
-            TRIM(:P_LEARNER_NAME) AS LEARNER_NAME,
+            REGEXP_REPLACE(
+                TRIM(:P_LEARNER_NAME),
+                '[[:space:]]+',
+                ' '
+            ) AS LEARNER_NAME,
             LOWER(TRIM(:P_EMAIL)) AS EMAIL,
-            TRIM(:P_DEPARTMENT_NAME) AS DEPARTMENT_NAME,
-            :P_SNOWFLAKE_EXPERIENCE_YEARS
-                AS SNOWFLAKE_EXPERIENCE_YEARS
+            REGEXP_REPLACE(
+                TRIM(:P_DEPARTMENT_NAME),
+                '[[:space:]]+',
+                ' '
+            ) AS DEPARTMENT_NAME,
+            :P_SNOWFLAKE_EXPERIENCE_YEARS AS SNOWFLAKE_EXPERIENCE_YEARS
     ) AS SOURCE
 
     ON TARGET.LEARNER_ID = SOURCE.LEARNER_ID
 
     WHEN MATCHED THEN
-
         UPDATE SET
-            LEARNER_NAME =
-                SOURCE.LEARNER_NAME,
-
-            EMAIL =
-                SOURCE.EMAIL,
-
-            DEPARTMENT_NAME =
-                SOURCE.DEPARTMENT_NAME,
-
-            SNOWFLAKE_EXPERIENCE_YEARS =
-                SOURCE.SNOWFLAKE_EXPERIENCE_YEARS,
-
-            EXPERIENCE_LEVEL_CODE =
-                NULL,
-
-            ACTIVE_FLAG =
-                TRUE,
-
-            UPDATED_AT =
-                CURRENT_TIMESTAMP()
+            LEARNER_NAME = SOURCE.LEARNER_NAME,
+            EMAIL = SOURCE.EMAIL,
+            DEPARTMENT_NAME = SOURCE.DEPARTMENT_NAME,
+            SNOWFLAKE_EXPERIENCE_YEARS = SOURCE.SNOWFLAKE_EXPERIENCE_YEARS,
+            EXPERIENCE_LEVEL_CODE = NULL,
+            ACTIVE_FLAG = TRUE,
+            UPDATED_AT = CURRENT_TIMESTAMP()
 
     WHEN NOT MATCHED THEN
-
         INSERT (
             LEARNER_ID,
             EMPLOYEE_ID,
@@ -526,15 +454,13 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Record or reactivate the learner's Pod membership
-    --------------------------------------------------------------------------*/
+    /* Create or reactivate the learner's Pod membership. */
 
     MERGE INTO CORE.POD_MEMBERS AS TARGET
 
     USING (
         SELECT
-            UPPER(TRIM(:P_POD_ID)) AS POD_ID,
+            :V_POD_ID AS POD_ID,
             TRIM(:P_EMPLOYEE_ID) AS EMPLOYEE_ID
     ) AS SOURCE
 
@@ -542,16 +468,11 @@ BEGIN
     AND TARGET.EMPLOYEE_ID = SOURCE.EMPLOYEE_ID
 
     WHEN MATCHED THEN
-
         UPDATE SET
-            ACTIVE_FLAG =
-                TRUE,
-
-            UPDATED_AT =
-                CURRENT_TIMESTAMP()
+            ACTIVE_FLAG = TRUE,
+            UPDATED_AT = CURRENT_TIMESTAMP()
 
     WHEN NOT MATCHED THEN
-
         INSERT (
             POD_ID,
             EMPLOYEE_ID,
@@ -569,9 +490,7 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Create or update the Pod Lead's nomination
-    --------------------------------------------------------------------------*/
+    /* Create or update the internal certification nomination. */
 
     MERGE INTO CORE.CERTIFICATION_NOMINATIONS AS TARGET
 
@@ -579,47 +498,28 @@ BEGIN
         SELECT
             :V_NOMINATION_ID AS NOMINATION_ID,
             TRIM(:P_EMPLOYEE_ID) AS EMPLOYEE_ID,
-            UPPER(TRIM(:P_POD_ID)) AS POD_ID,
-            TRIM(:P_POD_LEAD_EMPLOYEE_ID)
-                AS POD_LEAD_EMPLOYEE_ID,
-            UPPER(TRIM(:P_CERTIFICATION_ID))
-                AS CERTIFICATION_ID,
-            :P_TARGET_COMPLETION_DATE
-                AS TARGET_COMPLETION_DATE,
-            :P_TARGET_EXAM_DATE
-                AS TARGET_EXAM_DATE,
-            :P_NOMINATION_REASON
+            :V_POD_ID AS POD_ID,
+            :V_POD_LEAD_EMPLOYEE_ID AS POD_LEAD_EMPLOYEE_ID,
+            :V_CERTIFICATION_ID AS CERTIFICATION_ID,
+            :P_TARGET_COMPLETION_DATE AS TARGET_COMPLETION_DATE,
+            :V_TARGET_EXAM_DATE AS TARGET_EXAM_DATE,
+            'Submitted through the unified certification nomination file.'
                 AS NOMINATION_REASON
     ) AS SOURCE
 
     ON TARGET.NOMINATION_ID = SOURCE.NOMINATION_ID
 
     WHEN MATCHED THEN
-
         UPDATE SET
-            POD_ID =
-                SOURCE.POD_ID,
-
-            POD_LEAD_EMPLOYEE_ID =
-                SOURCE.POD_LEAD_EMPLOYEE_ID,
-
-            TARGET_COMPLETION_DATE =
-                SOURCE.TARGET_COMPLETION_DATE,
-
-            TARGET_EXAM_DATE =
-                SOURCE.TARGET_EXAM_DATE,
-
-            NOMINATION_REASON =
-                SOURCE.NOMINATION_REASON,
-
-            NOMINATION_STATUS =
-                'APPROVED',
-
-            UPDATED_AT =
-                CURRENT_TIMESTAMP()
+            POD_ID = SOURCE.POD_ID,
+            POD_LEAD_EMPLOYEE_ID = SOURCE.POD_LEAD_EMPLOYEE_ID,
+            TARGET_COMPLETION_DATE = SOURCE.TARGET_COMPLETION_DATE,
+            TARGET_EXAM_DATE = SOURCE.TARGET_EXAM_DATE,
+            NOMINATION_REASON = SOURCE.NOMINATION_REASON,
+            NOMINATION_STATUS = 'APPROVED',
+            UPDATED_AT = CURRENT_TIMESTAMP()
 
     WHEN NOT MATCHED THEN
-
         INSERT (
             NOMINATION_ID,
             EMPLOYEE_ID,
@@ -651,12 +551,7 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Create or update the learner's enrollment
-
-      PATH_ID is NULL because this enrollment uses a dynamic learner-specific
-      plan instead of a fixed experience-based path.
-    --------------------------------------------------------------------------*/
+    /* Create or update the dynamic enrollment. */
 
     MERGE INTO CORE.ENROLLMENTS AS TARGET
 
@@ -664,52 +559,29 @@ BEGIN
         SELECT
             :V_ENROLLMENT_ID AS ENROLLMENT_ID,
             :V_LEARNER_ID AS LEARNER_ID,
-            UPPER(TRIM(:P_CERTIFICATION_ID))
-                AS CERTIFICATION_ID,
+            :V_CERTIFICATION_ID AS CERTIFICATION_ID,
             :V_NOMINATION_ID AS NOMINATION_ID,
-            UPPER(TRIM(:P_POD_ID)) AS POD_ID,
-            TRIM(:P_POD_LEAD_EMPLOYEE_ID)
-                AS NOMINATED_BY_EMPLOYEE_ID,
-            :P_TARGET_COMPLETION_DATE
-                AS TARGET_COMPLETION_DATE,
-            :P_TARGET_EXAM_DATE
-                AS TARGET_EXAM_DATE
+            :V_POD_ID AS POD_ID,
+            :V_POD_LEAD_EMPLOYEE_ID AS NOMINATED_BY_EMPLOYEE_ID,
+            :P_TARGET_COMPLETION_DATE AS TARGET_COMPLETION_DATE,
+            :V_TARGET_EXAM_DATE AS TARGET_EXAM_DATE
     ) AS SOURCE
 
     ON TARGET.ENROLLMENT_ID = SOURCE.ENROLLMENT_ID
 
     WHEN MATCHED THEN
-
         UPDATE SET
-            PATH_ID =
-                NULL,
-
-            NOMINATION_ID =
-                SOURCE.NOMINATION_ID,
-
-            POD_ID =
-                SOURCE.POD_ID,
-
-            NOMINATED_BY_EMPLOYEE_ID =
-                SOURCE.NOMINATED_BY_EMPLOYEE_ID,
-
-            PLAN_TYPE =
-                'DYNAMIC',
-
-            TARGET_COMPLETION_DATE =
-                SOURCE.TARGET_COMPLETION_DATE,
-
-            TARGET_EXAM_DATE =
-                SOURCE.TARGET_EXAM_DATE,
-
-            ENROLLMENT_STATUS =
-                'ACTIVE',
-
-            UPDATED_AT =
-                CURRENT_TIMESTAMP()
+            PATH_ID = NULL,
+            NOMINATION_ID = SOURCE.NOMINATION_ID,
+            POD_ID = SOURCE.POD_ID,
+            NOMINATED_BY_EMPLOYEE_ID = SOURCE.NOMINATED_BY_EMPLOYEE_ID,
+            PLAN_TYPE = 'DYNAMIC',
+            TARGET_COMPLETION_DATE = SOURCE.TARGET_COMPLETION_DATE,
+            TARGET_EXAM_DATE = SOURCE.TARGET_EXAM_DATE,
+            ENROLLMENT_STATUS = 'ACTIVE',
+            UPDATED_AT = CURRENT_TIMESTAMP()
 
     WHEN NOT MATCHED THEN
-
         INSERT (
             ENROLLMENT_ID,
             LEARNER_ID,
@@ -745,12 +617,7 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Rebuild the learner-specific schedule
-
-      This allows a Pod Lead to update the target completion date and have the
-      learner's topic schedule recalculated.
-    --------------------------------------------------------------------------*/
+    /* Rebuild the learner-specific schedule after a date change. */
 
     DELETE FROM CORE.LEARNER_TOPIC_PLAN
     WHERE ENROLLMENT_ID = :V_ENROLLMENT_ID;
@@ -787,8 +654,7 @@ BEGIN
         JOIN CORE.EXAM_DOMAINS ED
             ON ST.DOMAIN_ID = ED.DOMAIN_ID
 
-        WHERE UPPER(ED.CERTIFICATION_ID) =
-              UPPER(TRIM(:P_CERTIFICATION_ID))
+        WHERE ED.CERTIFICATION_ID = :V_CERTIFICATION_ID
           AND ST.ACTIVE_FLAG = TRUE
           AND ED.ACTIVE_FLAG = TRUE
     ),
@@ -800,15 +666,10 @@ BEGIN
 
             LEAST(
                 :V_PLAN_WEEKS,
-
                 GREATEST(
                     1,
-
                     CEIL(
-                        (
-                            TOPIC_SEQUENCE *
-                            :V_PLAN_WEEKS
-                        ) /
+                        (TOPIC_SEQUENCE * :V_PLAN_WEEKS) /
                         TOTAL_TOPICS
                     )
                 )
@@ -832,14 +693,12 @@ BEGIN
             DATEADD(
                 'DAY',
                 6,
-
                 DATEADD(
                     'WEEK',
                     PLANNED_WEEK_NUMBER - 1,
                     CURRENT_DATE()
                 )
             ),
-
             :P_TARGET_COMPLETION_DATE
         ) AS PLANNED_END_DATE,
 
@@ -851,11 +710,7 @@ BEGIN
     FROM SCHEDULED_TOPICS;
 
 
-    /*--------------------------------------------------------------------------
-      Initialize topic-progress tracking
-
-      Existing progress is preserved. Only missing topics are initialized.
-    --------------------------------------------------------------------------*/
+    /* Initialize missing topic-progress records without deleting progress. */
 
     MERGE INTO CORE.TOPIC_PROGRESS AS TARGET
 
@@ -874,7 +729,6 @@ BEGIN
     AND TARGET.TOPIC_ID = SOURCE.TOPIC_ID
 
     WHEN NOT MATCHED THEN
-
         INSERT (
             ENROLLMENT_ID,
             TOPIC_ID,
@@ -894,15 +748,11 @@ BEGIN
         );
 
 
-    /*--------------------------------------------------------------------------
-      Return the nomination result
-    --------------------------------------------------------------------------*/
-
     RETURN
         'Learner nominated successfully. Pod: ' ||
-        UPPER(TRIM(P_POD_ID)) ||
+        REGEXP_REPLACE(TRIM(P_POD_NAME), '[[:space:]]+', ' ') ||
         ', certification: ' ||
-        UPPER(TRIM(P_CERTIFICATION_ID)) ||
+        REGEXP_REPLACE(TRIM(P_CERTIFICATION_NAME), '[[:space:]]+', ' ') ||
         ', dynamic duration: ' ||
         V_PLAN_WEEKS ||
         ' weeks, assigned topics: ' ||
@@ -914,7 +764,7 @@ $$;
 
 
 /*==============================================================================
-  8. VERIFICATION COMMANDS
+  4. VERIFICATION
 ==============================================================================*/
 
 SHOW TABLES LIKE 'PODS'
