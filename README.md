@@ -109,10 +109,15 @@ DB_CERT_ENABLEMENT_DEV
 ```text
 snowpro-core-enablement-platform/
 ├── data/
-│   └── study_topics.csv
+│   ├── study_topics.csv
+│   ├── learner_information.csv
+│   ├── learner_progress.csv
+│   └── certification_nominations.csv
 ├── docs/
+│   ├── DESIGN_DOCUMENT.md
 │   ├── DEPLOYMENT_GUIDE.md
-│   └── DEMO_GUIDE.md
+│   ├── CSV_UPLOAD_GUIDE.md
+│   └── TEST_RESULTS.md
 ├── sql/
 │   ├── 01_setup.sql
 │   ├── 02_reference_tables.sql
@@ -125,10 +130,17 @@ snowpro-core-enablement-platform/
 │   ├── 09_learning_schedule.sql
 │   ├── 10_learning_activity_pipeline.sql
 │   ├── 11_analytics_views.sql
-│   └── 12_rbac.sql
+│   ├── 12_rbac.sql
+│   ├── 13_learner_information_pipeline.sql
+│   ├── 14_learner_progress_pipeline.sql
+│   ├── 15_pod_nomination_dynamic_plan.sql
+│   ├── 16_pod_nomination_pipeline.sql
+│   └── 17_weekly_progress_reminders.sql
 ├── tests/
 │   ├── 01_study_topics_pipeline_test.sql
-│   └── 02_platform_data_quality_tests.sql
+│   ├── 02_platform_data_quality_tests.sql
+│   ├── 03_csv_pipeline_validation_tests.sql
+│   └── 04_pod_dynamic_plan_reminder_tests.sql
 ├── .gitignore
 └── README.md
 ```
@@ -378,6 +390,35 @@ The implementation is available in:
 
 ```text
 sql/14_learner_progress_pipeline.sql
+```
+
+### Pod Lead Nomination and Dynamic Plans
+
+The current nomination flow uses one business-friendly file:
+
+```text
+data/certification_nominations.csv
+```
+
+The Pod Lead supplies employee, Pod, certification and target-completion information. Snowflake resolves internal IDs, creates or updates the enrollment and distributes all active topics across the available weeks.
+
+Incremental updates preserve the original enrollment date and existing topic progress.
+
+The implementation is available in:
+
+```text
+sql/15_pod_nomination_dynamic_plan.sql
+sql/16_pod_nomination_pipeline.sql
+```
+
+### Weekly Progress Reminders
+
+The reminder framework checks inactive enrollments and prepares notifications for both the learner and the corresponding Pod Lead. Simulation mode is enabled by default, and the scheduled Task remains suspended after testing.
+
+The implementation is available in:
+
+```text
+sql/17_weekly_progress_reminders.sql
 ```
 
 ## Validation and Error Handling

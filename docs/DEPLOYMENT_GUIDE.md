@@ -48,12 +48,13 @@ snowflake-certification-enablement-platform/
 ├── data/
 │   ├── study_topics.csv
 │   ├── learner_information.csv
-│   └── learner_progress.csv
+│   ├── learner_progress.csv
+│   └── certification_nominations.csv
 │
 ├── docs/
 │   ├── DESIGN_DOCUMENT.md
 │   ├── DEPLOYMENT_GUIDE.md
-│   ├── DEMO_GUIDE.md
+│   ├── CSV_UPLOAD_GUIDE.md
 │   └── TEST_RESULTS.md
 │
 ├── sql/
@@ -70,7 +71,10 @@ snowflake-certification-enablement-platform/
 │   ├── 11_analytics_views.sql
 │   ├── 12_rbac.sql
 │   ├── 13_learner_information_pipeline.sql
-│   └── 14_learner_progress_pipeline.sql
+│   ├── 14_learner_progress_pipeline.sql
+│   ├── 15_pod_nomination_dynamic_plan.sql
+│   ├── 16_pod_nomination_pipeline.sql
+│   └── 17_weekly_progress_reminders.sql
 │
 ├── tests/
 │   ├── data/
@@ -80,7 +84,8 @@ snowflake-certification-enablement-platform/
 │   │   └── corrected_progress.csv
 │   │
 │   ├── 02_platform_data_quality_tests.sql
-│   └── 03_csv_pipeline_validation_tests.sql
+│   ├── 03_csv_pipeline_validation_tests.sql
+│   └── 04_pod_dynamic_plan_reminder_tests.sql
 │
 ├── .gitignore
 └── README.md
@@ -697,6 +702,55 @@ The progress pipeline:
 
 ---
 
+### Step 15: Deploy Pod Lead Nominations and Dynamic Plans
+
+Execute:
+
+```text
+sql/15_pod_nomination_dynamic_plan.sql
+```
+
+This script creates the Pod, Pod membership, certification nomination and learner-topic-plan objects. It also creates `CONTROL.SP_NOMINATE_CERT_ENABLEMENT_LEARNER()`.
+
+The procedure resolves internal identifiers, creates or updates an enrollment, generates a schedule from the Pod Lead's target completion date and preserves existing progress during later updates.
+
+---
+
+### Step 16: Deploy the Unified Nomination CSV Pipeline
+
+Execute:
+
+```text
+sql/16_pod_nomination_pipeline.sql
+```
+
+This script creates:
+
+- `RAW.CERTIFICATION_NOMINATIONS_INBOX`
+- `RAW.STR_CERTIFICATION_NOMINATIONS_INBOX`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_NOMINATIONS()`
+- `CONTROL.TSK_PROCESS_CERT_NOMINATIONS_1MIN`
+
+Upload `data/certification_nominations.csv` to `RAW.INT_RAW_CERTIFICATION_UPLOAD_DEV`, run the provided `COPY INTO` command and process the Stream.
+
+---
+
+### Step 17: Deploy Weekly Progress Reminders
+
+Execute:
+
+```text
+sql/17_weekly_progress_reminders.sql
+```
+
+This script creates the reminder configuration, audit log, candidate view, reminder procedure and `CONTROL.TSK_SEND_PROGRESS_REMINDERS_WEEKLY`.
+
+The default configuration uses seven-day inactivity, simulation mode and a Monday 9:00 AM Asia/Kolkata schedule. Each eligible enrollment creates one learner reminder and one Pod Lead follow-up notification.
+
+Keep live email disabled until the recipients are eligible, verified Snowflake users.
+
+---
+
 ## 6. Streams, Tasks and Procedures
 
 The platform uses Streams, Tasks and stored procedures for automated processing.
@@ -757,6 +811,10 @@ ALTER TASK DB_CERT_ENABLEMENT_DEV.CONTROL.TSK_PROCESS_LEARNER_PROGRESS_1MIN RESU
 ALTER TASK DB_CERT_ENABLEMENT_DEV.CONTROL.TSK_PROCESS_LEARNING_EVENTS_5MIN RESUME;
 
 ALTER TASK DB_CERT_ENABLEMENT_DEV.CONTROL.TSK_PROCESS_STUDY_TOPICS_1MIN RESUME;
+
+ALTER TASK DB_CERT_ENABLEMENT_DEV.CONTROL.TSK_PROCESS_CERT_NOMINATIONS_1MIN RESUME;
+
+ALTER TASK DB_CERT_ENABLEMENT_DEV.CONTROL.TSK_SEND_PROGRESS_REMINDERS_WEEKLY RESUME;
 ```
 
 ### Suspend Automatic Tasks

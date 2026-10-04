@@ -383,11 +383,7 @@ Status: **PASS**
 
 ## 13. Pod Configuration Testing
 
-Pod information was uploaded using:
-
-```text
-data/pods.csv
-```
+Pod information was maintained as approved internal Snowflake configuration. The separate `pods.csv` business input was removed from the final workflow.
 
 Test Pod:
 
@@ -420,15 +416,15 @@ Certification nominations were uploaded using:
 data/certification_nominations.csv
 ```
 
-The nomination included:
+The unified nomination file included only business-friendly information:
 
 - Employee information.
-- Pod information.
-- Pod Lead employee ID.
-- Certification ID.
+- Pod name.
+- Pod Lead name.
+- Certification name.
 - Target completion date.
-- Target exam date.
-- Nomination reason.
+
+Snowflake resolved or generated the technical Pod, certification, learner, nomination and enrollment identifiers. The target exam date was generated as seven days after completion.
 
 Expected result:
 
@@ -562,19 +558,22 @@ The reminder procedure was tested with email delivery disabled.
 
 Observed result:
 
-| Employee | Status |
-|---|---|
-| EMP_DEMO_101 | SIMULATED |
+| Employee | Recipient type | Status |
+|---|---|---|
+| EMP_DEMO_101 | LEARNER | SIMULATED |
+| EMP_DEMO_101 | POD_LEAD | SIMULATED |
+| EMP_DEMO_102 | LEARNER | SIMULATED |
+| EMP_DEMO_102 | POD_LEAD | SIMULATED |
 
 Expected result:
 
-- An eligible learner should appear in the reminder log.
+- An eligible learner and the corresponding Pod Lead should appear in the reminder log.
 - No real email should be sent in simulation mode.
 - No failure message should be recorded.
 
 Result:
 
-- A simulated reminder was recorded successfully.
+- Learner and Pod Lead reminders were recorded successfully.
 - No failure message was recorded.
 
 Status: **PASS**
@@ -588,6 +587,32 @@ Snowflake email notifications require the recipient email address to belong to a
 This is an environment prerequisite and not a platform defect.
 
 Status: **NOT EXECUTED – ENVIRONMENT PREREQUISITE**
+
+### 19.3 Incremental Update Testing
+
+The existing test learner `EMP_TEST_103` was submitted again with an updated target completion date.
+
+Expected result:
+
+- No duplicate learner or enrollment.
+- Original enrollment and plan start date preserved.
+- All 31 topics retained.
+- Existing topic progress preserved.
+
+Observed result:
+
+| Validation | Result |
+|---|---|
+| Learner records | 1 |
+| Enrollment records | 1 |
+| Plan start date | 30 September 2026 |
+| Updated completion date | 29 December 2026 |
+| Assigned topics | 31 |
+| Preserved topic status | IN_PROGRESS |
+| Preserved completion | 25% |
+| Preserved study hours | 0.50 |
+
+Status: **PASS**
 
 ## 20. Scheduled Task Validation
 
@@ -675,6 +700,8 @@ Status: **PASS**
 | Corrected nomination processing | PASS |
 | Pipeline monitoring | PASS |
 | Weekly reminder simulation | PASS |
+| Learner and Pod Lead reminder recipients | PASS |
+| Incremental update and progress preservation | PASS |
 | Live email delivery | NOT EXECUTED – ENVIRONMENT PREREQUISITE |
 | CSV upload documentation | PASS |
 | Git version control | PASS |
@@ -687,12 +714,13 @@ The platform now supports:
 
 - Pod Lead certification nominations.
 - Pod-based learner registration.
-- Pod Lead-provided completion and exam dates.
+- Pod Lead-provided completion dates and system-generated exam dates.
 - Dynamic learning-plan creation.
 - Learner-progress tracking.
 - CSV validation and rejection handling.
 - Pipeline monitoring.
-- Weekly progress-reminder simulation.
+- Learner and Pod Lead progress-reminder simulation.
+- Incremental schedule updates without duplicate records or lost progress.
 - Approved Snowflake object-naming standards.
 - Clear CSV upload instructions.
 

@@ -4,17 +4,17 @@
 
 **Owner:** Amritha Kalyanasundaram Ganesh
 
-**Version:** 1.0
+**Version:** 1.1
 
 **Status:** Prototype completed and tested
 
-**Last Updated:** 24 September 2026
+**Last Updated:** 4 October 2026
 
 ## Purpose and Scope
 
 This document describes the design of the Snowflake Certification Enablement Platform.
 
-The platform provides structured learning paths for Snowflake certifications. It registers learners, assigns a learning path based on Snowflake experience, creates a learning schedule, processes study activities, tracks progress, validates incoming data and provides analytics.
+The platform provides structured learning plans for Snowflake certifications. Pod Leads nominate learners and provide an agreed target completion date. The platform validates the nomination, creates a learner-specific schedule, processes study activities, tracks progress and provides analytics.
 
 The current prototype supports SnowPro Core. The design can be extended to support additional Snowflake certifications in the future.
 
@@ -31,9 +31,9 @@ The following improvements were completed based on feedback from the previous re
 | Do not expose technical IDs | Pod ID, certification ID, nomination ID and enrollment ID are resolved or generated inside Snowflake. | Completed |
 | Standardize incoming data | Names are trimmed, unnecessary spaces are removed, emails are normalized and certification names are validated against values stored in Snowflake. | Completed |
 | Track inactive learners | A weekly reminder framework was created and tested in simulation mode. | Completed |
-| Notify the Pod Lead also | The reminder will be updated to include both the employee and the corresponding Pod Lead. | Planned for Monday |
-| Support ongoing updates | Separate initial-load and incremental-update flows will be documented and tested. | Planned for Monday |
-| Perform a live email test | A controlled test will be completed using verified Snowflake email addresses. | Planned for Monday |
+| Notify the Pod Lead also | The reminder now creates one learner reminder and one Pod Lead follow-up notification. | Completed |
+| Support ongoing updates | Resubmission updates the existing enrollment, preserves the original plan start date and retains topic progress. | Completed |
+| Perform a live email test | A controlled test requires eligible, verified Snowflake recipient addresses. | Environment prerequisite |
 
 ## Updated Nomination Input
 
@@ -128,12 +128,12 @@ The Pod Lead discusses the learning timeline with the employee and provides the 
 
 The platform then:
 
-1. Uses the nomination-processing date as the plan start date.
+1. Uses the processing date for a new enrollment and preserves the original enrollment date during later updates.
 2. Calculates the available number of weeks.
 3. Retrieves all active topics for the selected certification.
 4. Distributes the topics across the available weeks.
 5. Creates one learner-specific topic plan.
-6. Initializes progress tracking for all assigned topics.
+6. Initializes missing progress records while preserving existing learner progress.
 
 Snowflake experience is stored as learner information, but the platform does not use it to impose a fixed duration.
 
@@ -159,14 +159,14 @@ The latest generated plans were:
 
 | Learner | Target completion date | Assigned topics | Generated duration | Plan type |
 |---|---:|---:|---:|---|
-| Asha Rao | 15 December 2026 | 31 | 11 weeks | DYNAMIC |
-| Rahul Mehta | 30 November 2026 | 31 | 9 weeks | DYNAMIC |
+| Asha Rao | 15 December 2026 | 31 | 12 weeks | DYNAMIC |
+| Rahul Mehta | 30 November 2026 | 31 | 10 weeks | DYNAMIC |
 
-The generated duration depends on the number of weeks between the processing date and the target completion date.
+The generated duration depends on the number of weeks between the enrollment date and the target completion date. An incremental update retains the enrollment date and recalculates the plan without deleting progress.
 
 ## Notification Status
 
-The weekly reminder framework is already available and was tested in simulation mode.
+The weekly reminder framework is available and was tested successfully in simulation mode for both recipient types.
 
 ### Current behavior
 
@@ -175,7 +175,7 @@ The reminder process:
 - Identifies active learners.
 - Confirms that the enrollment is active.
 - Checks whether progress has not been updated within seven days.
-- Prepares the reminder information.
+- Prepares one reminder for the learner and one follow-up notification for the Pod Lead.
 - Records the result in the reminder log.
 - Runs through a weekly scheduled Snowflake Task when enabled.
 
@@ -187,16 +187,16 @@ The first test used fictional email addresses. Snowflake live email delivery req
 
 Simulation mode allowed the complete reminder-selection and logging logic to be tested without attempting to send an email to an invalid recipient.
 
-### Notification improvement planned
+### Notification recipients
 
-Based on the latest review, the notification will be updated to include both:
+The completed reminder logic includes both:
 
 - The enrolled employee
 - The employee's Pod Lead
 
 The Pod Lead email will be retrieved from the internal Pod configuration. It will not need to be entered in every nomination CSV.
 
-A controlled live-email test will be completed using verified Snowflake email addresses.
+A controlled live-email test remains dependent on eligible, verified Snowflake email addresses.
 
 ## Initial and Incremental Data Flows
 
@@ -215,7 +215,7 @@ Approved CSV template is provided
 
 ### Incremental update flow
 
-The incremental flow will be used for future updates.
+The incremental flow is used for later updates.
 
 ```text
 Existing information is provided to the Pod Lead
@@ -224,7 +224,9 @@ Existing information is provided to the Pod Lead
 → Updated CSV is uploaded
 → Existing records are updated
 → New records are inserted
-→ Duplicate learner creation is prevented
+→ Duplicate learner and enrollment creation is prevented
+→ Original plan start date is preserved
+→ Existing topic progress is retained
 ```
 
 Existing employee IDs and standardized certification names should remain unchanged during incremental updates.
@@ -246,13 +248,9 @@ The feature branch has not yet been merged into `main`. It will be merged only a
 3. Review comments are addressed.
 4. Manager approval is received.
 
-## Remaining Work Before Monday
+## Remaining Release Work
 
-- Update reminder recipients to include the Pod Lead.
-- Perform the controlled live-email test.
-- Complete and test the incremental update flow.
-- Update the automated test scripts for the unified CSV.
-- Update the CSV upload guide.
+- Perform a controlled live-email test when verified recipients are available.
 - Get a peer review from Nitheesh or Thiagarajan.
 - Apply the review comments.
 - Merge the feature branch into `main` after approval.
@@ -265,7 +263,7 @@ The Pod Lead provides understandable business information, while Snowflake handl
 
 The unified nomination pipeline has been successfully tested with two records. Both records were accepted, and each learner received all 31 SnowPro Core topics.
 
-The remaining improvements are notification enhancement, incremental-flow testing, documentation updates and peer review before the planned Monday release.
+The learner and Pod Lead reminder simulation, incremental-update behavior and automated tests have passed. The remaining release steps are peer review, review corrections, manager approval and merge to `main`. Live email remains an environment-dependent test.
 
 ### In Scope
 
@@ -273,6 +271,10 @@ The remaining improvements are notification enhancement, incremental-flow testin
 - SnowPro Core certification configuration
 - Exam domains and study topics
 - Experience-based learning paths
+- Pod Lead certification nominations
+- Dynamic learner-specific schedules
+- Incremental schedule updates with progress preservation
+- Weekly learner and Pod Lead reminder simulation
 - Learner-information CSV ingestion
 - Learner-progress CSV ingestion
 - Learning schedule generation
@@ -290,7 +292,7 @@ The remaining improvements are notification enhancement, incremental-flow testin
 ### Outside the Current Scope
 
 - Direct integration with the Mastech Excel source
-- Automated email or Teams notifications
+- Live email delivery to unverified recipients
 - Streamlit user interface
 - Enterprise identity integration
 - Production deployment
@@ -343,6 +345,9 @@ The platform currently supports:
 - Pipeline run logging
 - Automated Stream and Task processing
 - Progress and readiness analytics
+- Pod Lead nominations and dynamic plans
+- Incremental updates without duplicate records
+- Learner and Pod Lead reminder simulation
 - Role-based access control
 
 ## Architecture Overview
@@ -390,9 +395,11 @@ Main objects include:
 - `RAW.STUDY_TOPICS_INBOX`
 - `RAW.LEARNER_INFORMATION_INBOX`
 - `RAW.LEARNER_PROGRESS_INBOX`
+- `RAW.CERTIFICATION_NOMINATIONS_INBOX`
 - `RAW.STR_STUDY_TOPICS_INBOX`
 - `RAW.STR_LEARNER_INFORMATION_INBOX`
 - `RAW.STR_LEARNER_PROGRESS_INBOX`
+- `RAW.STR_CERTIFICATION_NOMINATIONS_INBOX`
 - `RAW.INT_RAW_CERTIFICATION_UPLOAD_DEV`
 - `RAW.CERTIFICATION_CSV_FORMAT`
 
@@ -415,6 +422,10 @@ Main objects include:
 - `CORE.TOPIC_PROGRESS`
 - `CORE.LEARNING_EVENTS`
 - `CORE.ASSESSMENT_RESULTS`
+- `CORE.PODS`
+- `CORE.POD_MEMBERS`
+- `CORE.CERTIFICATION_NOMINATIONS`
+- `CORE.LEARNER_TOPIC_PLAN`
 
 ### CONTROL Layer
 
@@ -428,6 +439,11 @@ Main objects include:
 - `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNING_EVENTS`
 - `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION`
 - `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS`
+- `CONTROL.SP_NOMINATE_CERT_ENABLEMENT_LEARNER`
+- `CONTROL.SP_PROCESS_CERT_ENABLEMENT_NOMINATIONS`
+- `CONTROL.SP_SEND_CERT_ENABLEMENT_PROGRESS_REMINDERS`
+- `CONTROL.REMINDER_CONFIGURATION`
+- `CONTROL.REMINDER_NOTIFICATION_LOG`
 - `CONTROL.REJECTED_RECORDS`
 - `CONTROL.PIPELINE_RUN_LOG`
 - `CONTROL.CSV_REJECTED_RECORDS`
@@ -444,10 +460,11 @@ Main views include:
 - `ANALYTICS.VW_LEARNER_PROGRESS`
 - `ANALYTICS.VW_DOMAIN_PROGRESS`
 - `ANALYTICS.VW_CERTIFICATION_READINESS`
+- `ANALYTICS.VW_WEEKLY_REMINDER_CANDIDATES`
 
 ## Learning Paths
 
-The prototype contains four learning paths.
+The original prototype contains four experience-based learning paths for backward compatibility.
 
 | Snowflake experience | Experience code | Learning path | Duration | Weekly study target |
 |---|---|---|---:|---:|
@@ -456,7 +473,7 @@ The prototype contains four learning paths.
 | More than 5 and up to 9 years | `EXP_5_9` | `PATH_5_9` | 8 weeks | 6 hours |
 | More than 9 years | `EXP_9_PLUS` | `PATH_9_PLUS` | 6 weeks | 5 hours |
 
-Each path contains the same 31 study topics. The topics are distributed across a different number of weeks based on the learner's Snowflake experience.
+Each legacy path contains the same 31 study topics. New Pod Lead nominations do not use these fixed durations. The Pod Lead selects a target completion date after considering the employee's experience and availability, and the platform generates a learner-specific plan.
 
 These timelines are internal prototype recommendations and require review before production use.
 
