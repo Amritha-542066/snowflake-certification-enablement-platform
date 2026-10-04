@@ -3,21 +3,17 @@
   Pod Nomination, Dynamic Plan and Reminder Tests
 
   Purpose:
-  - Verify Pod and Pod Lead configuration.
-  - Verify Pod Lead nomination.
-  - Verify dynamic learning-plan creation.
-  - Verify invalid nomination handling and correction.
-  - Verify weekly reminder configuration and simulation.
+  - Validate the unified Pod Lead nomination workflow.
+  - Validate internally generated identifiers.
+  - Validate dynamic learner schedules.
+  - Validate incremental updates without duplicate records or lost progress.
+  - Validate learner and Pod Lead reminder simulation.
 
   Note:
-  - These are read-only verification queries.
-  - They do not insert, update or delete data.
+  - These verification queries do not send real emails.
+  - The weekly reminder Task should remain suspended after testing.
 ==============================================================================*/
 
-
-/*------------------------------------------------------------------------------
-  Test setup
-------------------------------------------------------------------------------*/
 
 USE ROLE ACCOUNTADMIN;
 
@@ -27,32 +23,12 @@ USE DATABASE DB_CERT_ENABLEMENT_DEV;
 
 
 /*==============================================================================
-  TEST 1: VERIFY STUDY TOPICS
+  TEST 1: APPROVED POD AND POD LEAD CONFIGURATION
+
+  Expected:
+  - Snowflake Data Engineering Pod exists.
+  - Durga Rajaneesh Maturu is stored as the active Pod Lead.
 ==============================================================================*/
-
-/*
-Expected:
-- TOTAL_STUDY_TOPICS = 31
-*/
-
-SELECT
-    COUNT(*) AS TOTAL_STUDY_TOPICS
-
-FROM CORE.STUDY_TOPICS
-
-WHERE ACTIVE_FLAG = TRUE;
-
-
-/*==============================================================================
-  TEST 2: VERIFY POD CONFIGURATION
-==============================================================================*/
-
-/*
-Expected:
-- POD_001 should appear.
-- Pod Lead employee ID should be LEAD_DEMO_001.
-- ACTIVE_FLAG should be TRUE.
-*/
 
 SELECT
     POD_ID,
@@ -60,167 +36,29 @@ SELECT
     POD_LEAD_EMPLOYEE_ID,
     POD_LEAD_NAME,
     POD_LEAD_EMAIL,
-    ACTIVE_FLAG
+    ACTIVE_FLAG,
+
+    IFF(
+        POD_NAME = 'Snowflake Data Engineering'
+        AND POD_LEAD_NAME = 'Durga Rajaneesh Maturu'
+        AND ACTIVE_FLAG = TRUE,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
 
 FROM CORE.PODS
 
-WHERE POD_ID = 'POD_001';
+WHERE POD_NAME = 'Snowflake Data Engineering';
 
 
 /*==============================================================================
-  TEST 3: VERIFY CERTIFICATION NOMINATIONS
+  TEST 2: LATEST UNIFIED NOMINATION PIPELINE RUN
+
+  Expected latest successful test result:
+  - Two records received.
+  - Two records accepted.
+  - Zero records rejected.
 ==============================================================================*/
-
-/*
-Expected:
-- EMP_DEMO_101 and EMP_DEMO_102 should appear.
-- Both nominations should be associated with POD_001.
-*/
-
-SELECT *
-
-FROM CORE.CERTIFICATION_NOMINATIONS
-
-WHERE EMPLOYEE_ID IN (
-    'EMP_DEMO_101',
-    'EMP_DEMO_102'
-)
-
-ORDER BY EMPLOYEE_ID;
-
-
-/*==============================================================================
-  TEST 4: VERIFY LEARNER REGISTRATION AND ENROLLMENT
-==============================================================================*/
-
-/*
-Expected:
-- Both employees should be registered.
-- PLAN_TYPE should be DYNAMIC.
-- Target dates should match the dates provided by the Pod Lead.
-*/
-
-SELECT
-    L.EMPLOYEE_ID,
-    L.LEARNER_NAME,
-    L.SNOWFLAKE_EXPERIENCE_YEARS,
-    E.POD_ID,
-    E.TARGET_COMPLETION_DATE,
-    E.TARGET_EXAM_DATE,
-    E.PLAN_TYPE,
-    E.ENROLLMENT_STATUS
-
-FROM CORE.LEARNERS L
-
-JOIN CORE.ENROLLMENTS E
-    ON L.LEARNER_ID = E.LEARNER_ID
-
-WHERE L.EMPLOYEE_ID IN (
-    'EMP_DEMO_101',
-    'EMP_DEMO_102'
-)
-
-ORDER BY L.EMPLOYEE_ID;
-
-
-/*==============================================================================
-  TEST 5: COMPARE THE TWO DYNAMIC LEARNING PLANS
-==============================================================================*/
-
-/*
-Expected:
-
-EMP_DEMO_101:
-- 31 assigned topics
-- Approximately 12 weeks
-- Plan end date: 2026-12-15
-
-EMP_DEMO_102:
-- 31 assigned topics
-- Approximately 10 weeks
-- Plan end date: 2026-11-30
-
-This proves that the schedule is based on the Pod Lead's target date
-and is not selected from a fixed experience-based path.
-*/
-
-SELECT
-    L.EMPLOYEE_ID,
-    L.LEARNER_NAME,
-    E.TARGET_COMPLETION_DATE,
-    E.TARGET_EXAM_DATE,
-    E.PLAN_TYPE,
-    COUNT(LTP.TOPIC_ID) AS ASSIGNED_TOPICS,
-    MIN(LTP.PLANNED_WEEK) AS FIRST_WEEK,
-    MAX(LTP.PLANNED_WEEK) AS LAST_WEEK,
-    MIN(LTP.PLANNED_START_DATE) AS PLAN_START_DATE,
-    MAX(LTP.PLANNED_END_DATE) AS PLAN_END_DATE
-
-FROM CORE.LEARNERS L
-
-JOIN CORE.ENROLLMENTS E
-    ON L.LEARNER_ID = E.LEARNER_ID
-
-JOIN CORE.LEARNER_TOPIC_PLAN LTP
-    ON E.ENROLLMENT_ID = LTP.ENROLLMENT_ID
-
-WHERE L.EMPLOYEE_ID IN (
-    'EMP_DEMO_101',
-    'EMP_DEMO_102'
-)
-
-GROUP BY
-    L.EMPLOYEE_ID,
-    L.LEARNER_NAME,
-    E.TARGET_COMPLETION_DATE,
-    E.TARGET_EXAM_DATE,
-    E.PLAN_TYPE
-
-ORDER BY L.EMPLOYEE_ID;
-
-
-/*==============================================================================
-  TEST 6: VERIFY INVALID POD LEAD REJECTION AND CORRECTION
-==============================================================================*/
-
-/*
-Test performed:
-- NOM_DEMO_002 was first submitted with WRONG_LEAD_999.
-- The pipeline rejected the record.
-- It was resubmitted with LEAD_DEMO_001.
-- The corrected record was accepted.
-
-Expected:
-- Rejection reason should mention that the supplied Pod Lead was not authorised.
-- RESOLVED_FLAG should be TRUE.
-- RESOLVED_AT should contain a timestamp.
-*/
-
-SELECT
-    PIPELINE_NAME,
-    SOURCE_RECORD_ID,
-    SOURCE_FILE_NAME,
-    REJECTION_REASON,
-    RESOLVED_FLAG,
-    REJECTED_AT,
-    RESOLVED_AT
-
-FROM CONTROL.CSV_REJECTED_RECORDS
-
-WHERE SOURCE_RECORD_ID = 'NOM_DEMO_002'
-
-ORDER BY REJECTED_AT DESC;
-
-
-/*==============================================================================
-  TEST 7: VERIFY NOMINATION PIPELINE RUNS
-==============================================================================*/
-
-/*
-Expected:
-- Successful pipeline runs should appear.
-- Records received, accepted and rejected should be recorded.
-*/
 
 SELECT
     PIPELINE_NAME,
@@ -230,104 +68,470 @@ SELECT
     RECORDS_REJECTED,
     RUN_MESSAGE,
     STARTED_AT,
-    COMPLETED_AT
+    COMPLETED_AT,
+
+    IFF(
+        RUN_STATUS = 'SUCCESS'
+        AND RECORDS_RECEIVED = RECORDS_ACCEPTED
+        AND RECORDS_REJECTED = 0,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
 
 FROM CONTROL.CSV_PIPELINE_RUN_LOG
 
-WHERE PIPELINE_NAME = 'POD_AND_CERTIFICATION_NOMINATION'
+WHERE PIPELINE_NAME = 'CERTIFICATION_NOMINATION'
 
-ORDER BY STARTED_AT DESC
-
-LIMIT 10;
-
-
-/*==============================================================================
-  TEST 8: VERIFY WEEKLY REMINDER CONFIGURATION
-==============================================================================*/
-
-/*
-Expected:
-- Reminder configuration should exist.
-- SEND_ENABLED should remain FALSE during prototype testing.
-- The normal reminder mode should be INACTIVE_ONLY.
-*/
-
-SELECT *
-
-FROM CONTROL.REMINDER_CONFIG;
+QUALIFY ROW_NUMBER() OVER (
+    ORDER BY STARTED_AT DESC
+) = 1;
 
 
 /*==============================================================================
-  TEST 9: VERIFY REMINDER CANDIDATES VIEW
+  TEST 3: DYNAMIC LEARNER PLANS
+
+  Expected:
+  - Each learner has 31 assigned topics.
+  - PLAN_TYPE is DYNAMIC.
+  - Plan start matches the enrollment date.
+  - Plan end matches the Pod Lead's target completion date.
 ==============================================================================*/
 
-/*
-Purpose:
-Shows learners who are currently eligible for a progress reminder.
+SELECT
+    L.EMPLOYEE_ID,
+    L.LEARNER_NAME,
+    P.POD_NAME,
+    P.POD_LEAD_NAME,
+    C.CERTIFICATION_NAME,
+    E.ENROLLED_DATE,
+    E.TARGET_COMPLETION_DATE,
+    E.TARGET_EXAM_DATE,
+    E.PLAN_TYPE,
+    COUNT(LTP.TOPIC_ID) AS ASSIGNED_TOPICS,
+    MIN(LTP.PLANNED_WEEK_NUMBER) AS FIRST_WEEK,
+    MAX(LTP.PLANNED_WEEK_NUMBER) AS LAST_WEEK,
+    MIN(LTP.PLANNED_START_DATE) AS PLAN_START_DATE,
+    MAX(LTP.PLANNED_END_DATE) AS PLAN_END_DATE,
 
-The result may be empty when no learner currently satisfies the configured
-reminder conditions. That is valid.
-*/
+    IFF(
+        E.PLAN_TYPE = 'DYNAMIC'
+        AND COUNT(LTP.TOPIC_ID) = 31
+        AND MIN(LTP.PLANNED_START_DATE) = E.ENROLLED_DATE
+        AND MAX(LTP.PLANNED_END_DATE) = E.TARGET_COMPLETION_DATE,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
 
-SELECT *
+FROM CORE.LEARNERS L
 
-FROM ANALYTICS.VW_WEEKLY_REMINDER_CANDIDATES
+JOIN CORE.ENROLLMENTS E
+    ON L.LEARNER_ID = E.LEARNER_ID
+
+JOIN CORE.PODS P
+    ON E.POD_ID = P.POD_ID
+
+JOIN CORE.CERTIFICATIONS C
+    ON E.CERTIFICATION_ID = C.CERTIFICATION_ID
+
+JOIN CORE.LEARNER_TOPIC_PLAN LTP
+    ON E.ENROLLMENT_ID = LTP.ENROLLMENT_ID
+
+WHERE L.EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102',
+    'EMP_TEST_103'
+)
+
+GROUP BY
+    L.EMPLOYEE_ID,
+    L.LEARNER_NAME,
+    P.POD_NAME,
+    P.POD_LEAD_NAME,
+    C.CERTIFICATION_NAME,
+    E.ENROLLED_DATE,
+    E.TARGET_COMPLETION_DATE,
+    E.TARGET_EXAM_DATE,
+    E.PLAN_TYPE
+
+ORDER BY L.EMPLOYEE_ID;
+
+
+/*==============================================================================
+  TEST 4A: NO DUPLICATE LEARNER RECORDS
+
+  Expected:
+  - One learner record for each company employee ID.
+==============================================================================*/
+
+SELECT
+    EMPLOYEE_ID,
+    COUNT(*) AS LEARNER_RECORDS,
+
+    IFF(
+        COUNT(*) = 1,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CORE.LEARNERS
+
+WHERE EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102',
+    'EMP_TEST_103'
+)
+
+GROUP BY EMPLOYEE_ID
 
 ORDER BY EMPLOYEE_ID;
 
 
 /*==============================================================================
-  TEST 10: VERIFY SIMULATED REMINDER RESULT
+  TEST 4B: NO DUPLICATE ENROLLMENTS
+
+  Expected:
+  - One enrollment per employee and certification.
 ==============================================================================*/
 
-/*
-Expected:
-- EMP_DEMO_101 should have a SIMULATED reminder record.
-- A simulated record proves the reminder workflow without sending a real email.
-*/
+SELECT
+    L.EMPLOYEE_ID,
+    E.CERTIFICATION_ID,
+    COUNT(*) AS ENROLLMENT_RECORDS,
+
+    IFF(
+        COUNT(*) = 1,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CORE.LEARNERS L
+
+JOIN CORE.ENROLLMENTS E
+    ON L.LEARNER_ID = E.LEARNER_ID
+
+WHERE L.EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102',
+    'EMP_TEST_103'
+)
+
+GROUP BY
+    L.EMPLOYEE_ID,
+    E.CERTIFICATION_ID
+
+ORDER BY L.EMPLOYEE_ID;
+
+
+/*==============================================================================
+  TEST 5: INTERNAL IDENTIFIERS
+
+  Expected:
+  - Technical identifiers are present in CORE.
+  - Users do not need to supply these identifiers in the nomination CSV.
+==============================================================================*/
+
+SELECT
+    L.EMPLOYEE_ID,
+    L.LEARNER_ID,
+    E.NOMINATION_ID,
+    E.ENROLLMENT_ID,
+    E.POD_ID,
+    E.CERTIFICATION_ID,
+
+    IFF(
+        L.LEARNER_ID LIKE 'LRN_%'
+        AND E.NOMINATION_ID LIKE 'NOM_%'
+        AND E.ENROLLMENT_ID LIKE 'ENR_%'
+        AND E.POD_ID IS NOT NULL
+        AND E.CERTIFICATION_ID IS NOT NULL,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CORE.LEARNERS L
+
+JOIN CORE.ENROLLMENTS E
+    ON L.LEARNER_ID = E.LEARNER_ID
+
+WHERE L.EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102',
+    'EMP_TEST_103'
+)
+
+ORDER BY L.EMPLOYEE_ID;
+
+
+/*==============================================================================
+  TEST 6: AUTOMATIC EXAM DATE
+
+  Expected:
+  - Target exam date is seven days after target completion date.
+==============================================================================*/
+
+SELECT
+    L.EMPLOYEE_ID,
+    E.TARGET_COMPLETION_DATE,
+    E.TARGET_EXAM_DATE,
+    DATEDIFF(
+        'DAY',
+        E.TARGET_COMPLETION_DATE,
+        E.TARGET_EXAM_DATE
+    ) AS DAYS_BETWEEN_COMPLETION_AND_EXAM,
+
+    IFF(
+        DATEDIFF(
+            'DAY',
+            E.TARGET_COMPLETION_DATE,
+            E.TARGET_EXAM_DATE
+        ) = 7,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CORE.LEARNERS L
+
+JOIN CORE.ENROLLMENTS E
+    ON L.LEARNER_ID = E.LEARNER_ID
+
+WHERE L.EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102',
+    'EMP_TEST_103'
+)
+
+ORDER BY L.EMPLOYEE_ID;
+
+
+/*==============================================================================
+  TEST 7: INCREMENTAL UPDATE AND PROGRESS PRESERVATION
+
+  Test learner:
+  - EMP_TEST_103
+
+  Expected:
+  - Original enrollment and plan start date remain 30 September 2026.
+  - Updated completion date is 29 December 2026.
+  - All 31 topics remain assigned.
+  - D01_T01 remains IN_PROGRESS at 25 percent and 0.50 hours.
+==============================================================================*/
+
+WITH TARGET AS (
+    SELECT
+        L.EMPLOYEE_ID,
+        E.ENROLLMENT_ID,
+        E.ENROLLED_DATE,
+        E.TARGET_COMPLETION_DATE,
+        E.TARGET_EXAM_DATE
+
+    FROM CORE.LEARNERS L
+
+    JOIN CORE.ENROLLMENTS E
+        ON L.LEARNER_ID = E.LEARNER_ID
+
+    WHERE L.EMPLOYEE_ID = 'EMP_TEST_103'
+),
+
+PLAN AS (
+    SELECT
+        ENROLLMENT_ID,
+        COUNT(*) AS ASSIGNED_TOPICS,
+        MIN(PLANNED_START_DATE) AS PLAN_START_DATE,
+        MAX(PLANNED_END_DATE) AS PLAN_END_DATE
+
+    FROM CORE.LEARNER_TOPIC_PLAN
+
+    GROUP BY ENROLLMENT_ID
+)
+
+SELECT
+    T.EMPLOYEE_ID,
+    T.ENROLLED_DATE,
+    T.TARGET_COMPLETION_DATE,
+    T.TARGET_EXAM_DATE,
+    P.ASSIGNED_TOPICS,
+    P.PLAN_START_DATE,
+    P.PLAN_END_DATE,
+    TP.PROGRESS_STATUS,
+    TP.COMPLETION_PERCENT,
+    TP.HOURS_SPENT,
+
+    IFF(
+        T.ENROLLED_DATE = '2026-09-30'::DATE
+        AND T.TARGET_COMPLETION_DATE = '2026-12-29'::DATE
+        AND T.TARGET_EXAM_DATE = '2027-01-05'::DATE
+        AND P.ASSIGNED_TOPICS = 31
+        AND P.PLAN_START_DATE = T.ENROLLED_DATE
+        AND P.PLAN_END_DATE = T.TARGET_COMPLETION_DATE
+        AND TP.PROGRESS_STATUS = 'IN_PROGRESS'
+        AND TP.COMPLETION_PERCENT = 25
+        AND TP.HOURS_SPENT = 0.50,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM TARGET T
+
+JOIN PLAN P
+    ON T.ENROLLMENT_ID = P.ENROLLMENT_ID
+
+JOIN CORE.TOPIC_PROGRESS TP
+    ON T.ENROLLMENT_ID = TP.ENROLLMENT_ID
+   AND TP.TOPIC_ID = 'D01_T01';
+
+
+/*==============================================================================
+  TEST 8: SAFE WEEKLY REMINDER CONFIGURATION
+
+  Expected:
+  - Normal reminder mode is INACTIVE_ONLY.
+  - Inactivity threshold is seven days.
+  - Live sending remains disabled.
+==============================================================================*/
+
+SELECT
+    CONFIG_ID,
+    REMINDER_MODE,
+    INACTIVITY_DAYS,
+    EMAIL_INTEGRATION_NAME,
+    SEND_ENABLED,
+    ACTIVE_FLAG,
+
+    IFF(
+        REMINDER_MODE = 'INACTIVE_ONLY'
+        AND INACTIVITY_DAYS = 7
+        AND SEND_ENABLED = FALSE
+        AND ACTIVE_FLAG = TRUE,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CONTROL.REMINDER_CONFIGURATION
+
+WHERE CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER';
+
+
+/*==============================================================================
+  TEST 9: LEARNER AND POD LEAD REMINDER SIMULATION
+
+  Expected:
+  - Both LEARNER and POD_LEAD recipient types were simulated.
+  - No real email was sent during this test.
+==============================================================================*/
 
 SELECT
     EMPLOYEE_ID,
+    COUNT(DISTINCT RECIPIENT_TYPE) AS RECIPIENT_TYPES_TESTED,
+    LISTAGG(
+        DISTINCT RECIPIENT_TYPE,
+        ', '
+    ) WITHIN GROUP (
+        ORDER BY RECIPIENT_TYPE
+    ) AS RECIPIENT_TYPES,
+    MAX(REMINDER_SENT_AT) AS LATEST_SIMULATION_AT,
+
+    IFF(
+        COUNT(DISTINCT RECIPIENT_TYPE) = 2
+        AND COUNT_IF(REMINDER_STATUS = 'FAILED') = 0,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
+
+FROM CONTROL.REMINDER_NOTIFICATION_LOG
+
+WHERE EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102'
+)
+  AND RECIPIENT_TYPE IN (
+      'LEARNER',
+      'POD_LEAD'
+  )
+  AND REMINDER_STATUS = 'SIMULATED'
+
+GROUP BY EMPLOYEE_ID
+
+ORDER BY EMPLOYEE_ID;
+
+
+/*==============================================================================
+  TEST 10: REMINDER AUDIT DETAILS
+
+  Expected:
+  - Learner and Pod Lead rows have names, emails and SIMULATED status.
+  - FAILURE_MESSAGE is empty.
+==============================================================================*/
+
+SELECT
+    EMPLOYEE_ID,
+    RECIPIENT_TYPE,
+    RECIPIENT_NAME,
     RECIPIENT_EMAIL,
     REMINDER_STATUS,
     FAILURE_MESSAGE,
-    REMINDER_SENT_AT
+    REMINDER_SENT_AT,
 
-FROM CONTROL.REMINDER_LOG
+    IFF(
+        RECIPIENT_NAME IS NOT NULL
+        AND RECIPIENT_EMAIL IS NOT NULL
+        AND REMINDER_STATUS = 'SIMULATED'
+        AND FAILURE_MESSAGE IS NULL,
+        'PASS',
+        'FAIL'
+    ) AS TEST_STATUS
 
-WHERE EMPLOYEE_ID = 'EMP_DEMO_101'
+FROM CONTROL.REMINDER_NOTIFICATION_LOG
 
-ORDER BY REMINDER_SENT_AT DESC;
+WHERE EMPLOYEE_ID IN (
+    'EMP_DEMO_101',
+    'EMP_DEMO_102'
+)
+  AND RECIPIENT_TYPE IN (
+      'LEARNER',
+      'POD_LEAD'
+  )
+
+QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY
+        EMPLOYEE_ID,
+        RECIPIENT_TYPE
+    ORDER BY REMINDER_SENT_AT DESC
+) = 1
+
+ORDER BY
+    EMPLOYEE_ID,
+    RECIPIENT_TYPE;
 
 
 /*==============================================================================
-  TEST 11: VERIFY AUTOMATION TASKS
+  TEST 11: AUTOMATION TASK STATUS
+
+  Expected:
+  - Both Tasks exist.
+  - The reminder Task remains suspended after testing.
 ==============================================================================*/
 
-/*
-Expected tasks:
-- TSK_PROCESS_CERT_NOMINATIONS_1MIN
-- TSK_SEND_PROGRESS_REMINDERS_WEEKLY
+SHOW TASKS LIKE
+    'TSK_PROCESS_CERT_NOMINATIONS_1MIN'
+IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;
 
-The reminder task should remain suspended after testing to avoid unnecessary
-trial-account usage.
-*/
-
-SHOW TASKS IN DATABASE DB_CERT_ENABLEMENT_DEV;
+SHOW TASKS LIKE
+    'TSK_SEND_PROGRESS_REMINDERS_WEEKLY'
+IN SCHEMA DB_CERT_ENABLEMENT_DEV.CONTROL;
 
 
 /*==============================================================================
-  FINAL TEST SUMMARY
+  EXPECTED FINAL RESULT
 
-  Expected result:
-  1. Naming standards applied.
-  2. Pod configuration processed.
-  3. Pod Lead nominations processed.
-  4. Invalid Pod Lead rejected.
-  5. Corrected nomination accepted.
-  6. Dynamic plans created with different durations.
-  7. All 31 study topics assigned to each learner.
-  8. Pipeline executions recorded.
-  9. Weekly reminder simulation completed.
-  10. Automation tasks created and left suspended after testing.
+  1. Approved Pod and Pod Lead configuration: PASS
+  2. Unified nomination pipeline: PASS
+  3. Dynamic 31-topic learning plans: PASS
+  4. Duplicate prevention: PASS
+  5. Internal identifier generation: PASS
+  6. Automatic target exam date: PASS
+  7. Incremental update and progress preservation: PASS
+  8. Safe reminder configuration: PASS
+  9. Learner and Pod Lead reminder simulation: PASS
+  10. Reminder audit details: PASS
+  11. Automation Tasks created and reminder Task suspended: PASS
 ==============================================================================*/

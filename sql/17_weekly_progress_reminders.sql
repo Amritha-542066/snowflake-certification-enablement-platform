@@ -1,10 +1,10 @@
 /*==============================================================================
   Snowflake Certification Enablement Platform
-  Step 17: Weekly learner progress reminders
+  Step 17: Weekly learner and Pod Lead progress reminders
 
   Purpose:
   - Identify active learners who need a progress reminder.
-  - Support reminders for inactive learners or all active learners.
+  - Prepare one reminder for the learner and one for the learner's Pod Lead.
   - Support simulation mode before real emails are enabled.
   - Send weekly emails using a Snowflake notification integration.
   - Record every reminder attempt in an audit table.
@@ -41,11 +41,8 @@ USE SCHEMA CONTROL;
   - The recipient's email address must be verified.
   - The notification integration must be enabled.
 
-  ALLOWED_RECIPIENTS is not specified here because real learner email
-  addresses will be added later.
-
-  Real email sending remains disabled in the configuration table until the
-  recipient setup has been verified.
+  Real email sending remains disabled until eligible learner and Pod Lead
+  email addresses have been verified.
 ------------------------------------------------------------------------------*/
 
 CREATE NOTIFICATION INTEGRATION IF NOT EXISTS
@@ -67,17 +64,17 @@ CREATE NOTIFICATION INTEGRATION IF NOT EXISTS
   REMINDER_MODE values:
 
   INACTIVE_ONLY
-  - Send reminders only when the learner has not recorded activity within
+  - Prepare reminders only when the learner has not recorded activity within
     the configured number of days.
 
   ALL_ACTIVE
-  - Send reminders to every active learner.
+  - Prepare reminders for every active learner.
 
   SEND_ENABLED values:
 
   FALSE
-  - Simulation mode. Candidates are identified and logged, but no email
-    is sent.
+  - Simulation mode. Recipients are identified and logged, but no email is
+    sent.
 
   TRUE
   - Live mode. Snowflake attempts to send the email.
@@ -97,13 +94,6 @@ CREATE TABLE IF NOT EXISTS CONTROL.REMINDER_CONFIGURATION (
         PRIMARY KEY (CONFIG_ID)
 );
 
-
-/*------------------------------------------------------------------------------
-  Create the default reminder configuration.
-
-  The MERGE prevents duplicate configuration rows when the deployment script
-  is executed more than once.
-------------------------------------------------------------------------------*/
 
 MERGE INTO CONTROL.REMINDER_CONFIGURATION AS TARGET
 
@@ -168,12 +158,18 @@ WHEN NOT MATCHED THEN
 ==============================================================================*/
 
 /*------------------------------------------------------------------------------
-  Records every simulated, sent or failed reminder.
+  RECIPIENT_TYPE values:
+
+  LEARNER
+  - Reminder prepared for the enrolled employee.
+
+  POD_LEAD
+  - Follow-up notification prepared for the employee's Pod Lead.
 
   REMINDER_STATUS values:
 
   SIMULATED
-  - Learner was identified, but real sending was disabled.
+  - Recipient was identified, but real sending was disabled.
 
   SENT
   - Snowflake successfully submitted the email.
@@ -187,6 +183,8 @@ CREATE TABLE IF NOT EXISTS CONTROL.REMINDER_NOTIFICATION_LOG (
     ENROLLMENT_ID              VARCHAR(30)    NOT NULL,
     LEARNER_ID                 VARCHAR(30)    NOT NULL,
     EMPLOYEE_ID                VARCHAR(50)    NOT NULL,
+    RECIPIENT_TYPE             VARCHAR(30),
+    RECIPIENT_NAME             VARCHAR(200),
     RECIPIENT_EMAIL            VARCHAR(320)   NOT NULL,
     REMINDER_STATUS            VARCHAR(30)    NOT NULL,
     REMINDER_SUBJECT           VARCHAR(256),
@@ -199,21 +197,31 @@ CREATE TABLE IF NOT EXISTS CONTROL.REMINDER_NOTIFICATION_LOG (
 );
 
 
+/*------------------------------------------------------------------------------
+  Add the new recipient columns when upgrading an existing deployment.
+------------------------------------------------------------------------------*/
+
+ALTER TABLE CONTROL.REMINDER_NOTIFICATION_LOG
+    ADD COLUMN IF NOT EXISTS RECIPIENT_TYPE VARCHAR(30);
+
+ALTER TABLE CONTROL.REMINDER_NOTIFICATION_LOG
+    ADD COLUMN IF NOT EXISTS RECIPIENT_NAME VARCHAR(200);
+
+
 /*==============================================================================
   5. REMINDER-CANDIDATE VIEW
 ==============================================================================*/
 
 /*------------------------------------------------------------------------------
-  The view identifies learners who should receive a weekly reminder.
+  The view returns one row per notification recipient.
 
-  A learner is eligible when:
+  An eligible enrollment normally produces:
 
-  - The learner is active.
-  - The enrollment is active.
-  - The target completion date has not passed.
-  - The reminder configuration is active.
-  - The configured reminder rule is satisfied.
-  - A successful reminder was not already sent in the last six days.
+  - One LEARNER row using CORE.LEARNERS.EMAIL.
+  - One POD_LEAD row using CORE.PODS.POD_LEAD_EMAIL.
+
+  A Pod Lead row is created only when an active Pod and a valid Pod Lead email
+  are available.
 ------------------------------------------------------------------------------*/
 
 CREATE OR REPLACE VIEW
@@ -229,88 +237,186 @@ WITH LAST_LEARNING_ACTIVITY AS (
 
     GROUP BY
         ENROLLMENT_ID
+),
+
+ELIGIBLE_ENROLLMENTS AS (
+    SELECT
+        L.LEARNER_ID,
+        L.EMPLOYEE_ID,
+        L.LEARNER_NAME,
+        L.EMAIL AS LEARNER_EMAIL,
+        E.ENROLLMENT_ID,
+        E.CERTIFICATION_ID,
+        CERT.CERTIFICATION_NAME,
+        E.POD_ID,
+        P.POD_LEAD_NAME,
+        P.POD_LEAD_EMAIL,
+        E.TARGET_COMPLETION_DATE,
+        E.TARGET_EXAM_DATE,
+        A.LAST_ACTIVITY_AT,
+
+        DATEDIFF(
+            'DAY',
+            COALESCE(
+                TO_DATE(A.LAST_ACTIVITY_AT),
+                E.ENROLLED_DATE
+            ),
+            CURRENT_DATE()
+        ) AS DAYS_SINCE_LAST_ACTIVITY,
+
+        C.REMINDER_MODE,
+        C.INACTIVITY_DAYS,
+        C.EMAIL_INTEGRATION_NAME,
+        C.SEND_ENABLED
+
+    FROM CORE.LEARNERS L
+
+    JOIN CORE.ENROLLMENTS E
+        ON L.LEARNER_ID = E.LEARNER_ID
+
+    JOIN CORE.CERTIFICATIONS CERT
+        ON E.CERTIFICATION_ID = CERT.CERTIFICATION_ID
+
+    LEFT JOIN CORE.PODS P
+        ON E.POD_ID = P.POD_ID
+       AND P.ACTIVE_FLAG = TRUE
+
+    LEFT JOIN LAST_LEARNING_ACTIVITY A
+        ON E.ENROLLMENT_ID = A.ENROLLMENT_ID
+
+    CROSS JOIN CONTROL.REMINDER_CONFIGURATION C
+
+    WHERE L.ACTIVE_FLAG = TRUE
+
+      AND E.ENROLLMENT_STATUS = 'ACTIVE'
+
+      AND E.TARGET_COMPLETION_DATE >= CURRENT_DATE()
+
+      AND C.CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER'
+
+      AND C.ACTIVE_FLAG = TRUE
+
+      AND (
+            UPPER(C.REMINDER_MODE) = 'ALL_ACTIVE'
+
+            OR
+
+            (
+                UPPER(C.REMINDER_MODE) = 'INACTIVE_ONLY'
+
+                AND DATEDIFF(
+                        'DAY',
+                        COALESCE(
+                            TO_DATE(A.LAST_ACTIVITY_AT),
+                            E.ENROLLED_DATE
+                        ),
+                        CURRENT_DATE()
+                    ) >= C.INACTIVITY_DAYS
+            )
+          )
+),
+
+RECIPIENTS AS (
+    SELECT
+        LEARNER_ID,
+        EMPLOYEE_ID,
+        LEARNER_NAME,
+        ENROLLMENT_ID,
+        CERTIFICATION_ID,
+        CERTIFICATION_NAME,
+        POD_ID,
+        TARGET_COMPLETION_DATE,
+        TARGET_EXAM_DATE,
+        LAST_ACTIVITY_AT,
+        DAYS_SINCE_LAST_ACTIVITY,
+        REMINDER_MODE,
+        INACTIVITY_DAYS,
+        EMAIL_INTEGRATION_NAME,
+        SEND_ENABLED,
+        'LEARNER' AS RECIPIENT_TYPE,
+        LEARNER_NAME AS RECIPIENT_NAME,
+        LOWER(TRIM(LEARNER_EMAIL)) AS RECIPIENT_EMAIL
+
+    FROM ELIGIBLE_ENROLLMENTS
+
+    WHERE LEARNER_EMAIL IS NOT NULL
+      AND TRIM(LEARNER_EMAIL) LIKE '%@%.%'
+
+    UNION ALL
+
+    SELECT
+        LEARNER_ID,
+        EMPLOYEE_ID,
+        LEARNER_NAME,
+        ENROLLMENT_ID,
+        CERTIFICATION_ID,
+        CERTIFICATION_NAME,
+        POD_ID,
+        TARGET_COMPLETION_DATE,
+        TARGET_EXAM_DATE,
+        LAST_ACTIVITY_AT,
+        DAYS_SINCE_LAST_ACTIVITY,
+        REMINDER_MODE,
+        INACTIVITY_DAYS,
+        EMAIL_INTEGRATION_NAME,
+        SEND_ENABLED,
+        'POD_LEAD' AS RECIPIENT_TYPE,
+        POD_LEAD_NAME AS RECIPIENT_NAME,
+        LOWER(TRIM(POD_LEAD_EMAIL)) AS RECIPIENT_EMAIL
+
+    FROM ELIGIBLE_ENROLLMENTS
+
+    WHERE POD_LEAD_NAME IS NOT NULL
+      AND TRIM(POD_LEAD_NAME) <> ''
+      AND POD_LEAD_EMAIL IS NOT NULL
+      AND TRIM(POD_LEAD_EMAIL) LIKE '%@%.%'
 )
 
 SELECT
-    L.LEARNER_ID,
-    L.EMPLOYEE_ID,
-    L.LEARNER_NAME,
-    L.EMAIL,
-    E.ENROLLMENT_ID,
-    E.CERTIFICATION_ID,
-    E.POD_ID,
-    E.TARGET_COMPLETION_DATE,
-    E.TARGET_EXAM_DATE,
-    A.LAST_ACTIVITY_AT,
+    R.LEARNER_ID,
+    R.EMPLOYEE_ID,
+    R.LEARNER_NAME,
+    R.ENROLLMENT_ID,
+    R.CERTIFICATION_ID,
+    R.CERTIFICATION_NAME,
+    R.POD_ID,
+    R.TARGET_COMPLETION_DATE,
+    R.TARGET_EXAM_DATE,
+    R.LAST_ACTIVITY_AT,
+    R.DAYS_SINCE_LAST_ACTIVITY,
+    R.REMINDER_MODE,
+    R.INACTIVITY_DAYS,
+    R.EMAIL_INTEGRATION_NAME,
+    R.SEND_ENABLED,
+    R.RECIPIENT_TYPE,
+    R.RECIPIENT_NAME,
+    R.RECIPIENT_EMAIL
 
-    DATEDIFF(
-        'DAY',
-        COALESCE(
-            TO_DATE(A.LAST_ACTIVITY_AT),
-            E.ENROLLED_DATE
-        ),
-        CURRENT_DATE()
-    ) AS DAYS_SINCE_LAST_ACTIVITY,
+FROM RECIPIENTS R
 
-    C.REMINDER_MODE,
-    C.INACTIVITY_DAYS,
-    C.EMAIL_INTEGRATION_NAME,
-    C.SEND_ENABLED
+WHERE NOT EXISTS (
+    SELECT
+        1
 
-FROM CORE.LEARNERS L
+    FROM CONTROL.REMINDER_NOTIFICATION_LOG RL
 
-JOIN CORE.ENROLLMENTS E
-    ON L.LEARNER_ID = E.LEARNER_ID
-
-LEFT JOIN LAST_LEARNING_ACTIVITY A
-    ON E.ENROLLMENT_ID = A.ENROLLMENT_ID
-
-CROSS JOIN CONTROL.REMINDER_CONFIGURATION C
-
-WHERE L.ACTIVE_FLAG = TRUE
-
-  AND E.ENROLLMENT_STATUS = 'ACTIVE'
-
-  AND E.TARGET_COMPLETION_DATE >= CURRENT_DATE()
-
-  AND C.CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER'
-
-  AND C.ACTIVE_FLAG = TRUE
-
-  AND (
-        UPPER(C.REMINDER_MODE) = 'ALL_ACTIVE'
-
-        OR
-
-        (
-            UPPER(C.REMINDER_MODE) = 'INACTIVE_ONLY'
-
-            AND DATEDIFF(
-                    'DAY',
-                    COALESCE(
-                        TO_DATE(A.LAST_ACTIVITY_AT),
-                        E.ENROLLED_DATE
-                    ),
-                    CURRENT_DATE()
-                ) >= C.INACTIVITY_DAYS
-        )
-      )
-
-  AND NOT EXISTS (
-        SELECT
-            1
-
-        FROM CONTROL.REMINDER_NOTIFICATION_LOG RL
-
-        WHERE RL.ENROLLMENT_ID = E.ENROLLMENT_ID
-          AND RL.REMINDER_STATUS = 'SENT'
-          AND RL.REMINDER_SENT_AT >=
-              DATEADD(
-                  'DAY',
-                  -6,
-                  CURRENT_TIMESTAMP()
+    WHERE RL.ENROLLMENT_ID = R.ENROLLMENT_ID
+      AND UPPER(
+              COALESCE(
+                  RL.RECIPIENT_TYPE,
+                  'LEARNER'
               )
-      );
+          ) = R.RECIPIENT_TYPE
+      AND LOWER(RL.RECIPIENT_EMAIL) =
+          LOWER(R.RECIPIENT_EMAIL)
+      AND RL.REMINDER_STATUS = 'SENT'
+      AND RL.REMINDER_SENT_AT >=
+          DATEADD(
+              'DAY',
+              -6,
+              CURRENT_TIMESTAMP()
+          )
+);
 
 
 /*==============================================================================
@@ -330,7 +436,7 @@ DECLARE
     V_SEND_ENABLED              BOOLEAN;
     V_EMAIL_INTEGRATION_NAME    VARCHAR;
 
-    V_CANDIDATE_COUNT           NUMBER DEFAULT 0;
+    V_RECIPIENT_COUNT           NUMBER DEFAULT 0;
     V_SENT_COUNT                NUMBER DEFAULT 0;
     V_SIMULATED_COUNT           NUMBER DEFAULT 0;
     V_FAILED_COUNT              NUMBER DEFAULT 0;
@@ -339,25 +445,23 @@ DECLARE
     V_LEARNER_ID                VARCHAR;
     V_EMPLOYEE_ID               VARCHAR;
     V_LEARNER_NAME              VARCHAR;
-    V_EMAIL                     VARCHAR;
     V_ENROLLMENT_ID             VARCHAR;
-    V_CERTIFICATION_ID          VARCHAR;
+    V_CERTIFICATION_NAME        VARCHAR;
     V_TARGET_COMPLETION_DATE    DATE;
     V_LAST_ACTIVITY_AT          TIMESTAMP_NTZ;
     V_DAYS_INACTIVE             NUMBER;
+    V_RECIPIENT_TYPE            VARCHAR;
+    V_RECIPIENT_NAME            VARCHAR;
+    V_RECIPIENT_EMAIL           VARCHAR;
 
     V_EMAIL_SUBJECT             VARCHAR;
     V_EMAIL_BODY                VARCHAR;
     V_SEND_RESULT               VARCHAR;
     V_FAILURE_MESSAGE           VARCHAR;
 
-    V_LEARNER_RESULTSET         RESULTSET;
+    V_RECIPIENT_RESULTSET       RESULTSET;
 
 BEGIN
-
-    /*--------------------------------------------------------------------------
-      Check that an active reminder configuration exists
-    --------------------------------------------------------------------------*/
 
     SELECT
         COUNT(*)
@@ -379,10 +483,6 @@ BEGIN
     END IF;
 
 
-    /*--------------------------------------------------------------------------
-      Read the current reminder configuration
-    --------------------------------------------------------------------------*/
-
     SELECT
         SEND_ENABLED,
         EMAIL_INTEGRATION_NAME
@@ -397,33 +497,32 @@ BEGIN
       AND ACTIVE_FLAG = TRUE;
 
 
-    /*--------------------------------------------------------------------------
-      Process each eligible learner
-    --------------------------------------------------------------------------*/
-
-    V_LEARNER_RESULTSET := (
+    V_RECIPIENT_RESULTSET := (
         SELECT
             LEARNER_ID,
             EMPLOYEE_ID,
             LEARNER_NAME,
-            EMAIL,
             ENROLLMENT_ID,
-            CERTIFICATION_ID,
+            CERTIFICATION_NAME,
             TARGET_COMPLETION_DATE,
             LAST_ACTIVITY_AT,
-            DAYS_SINCE_LAST_ACTIVITY
+            DAYS_SINCE_LAST_ACTIVITY,
+            RECIPIENT_TYPE,
+            RECIPIENT_NAME,
+            RECIPIENT_EMAIL
 
         FROM ANALYTICS.VW_WEEKLY_REMINDER_CANDIDATES
 
         ORDER BY
-            EMPLOYEE_ID
+            EMPLOYEE_ID,
+            RECIPIENT_TYPE
     );
 
 
-    FOR LEARNER_ITEM IN V_LEARNER_RESULTSET DO
+    FOR RECIPIENT_ITEM IN V_RECIPIENT_RESULTSET DO
 
-        V_CANDIDATE_COUNT :=
-            V_CANDIDATE_COUNT + 1;
+        V_RECIPIENT_COUNT :=
+            V_RECIPIENT_COUNT + 1;
 
         V_REMINDER_ID :=
             'REM_' ||
@@ -434,73 +533,103 @@ BEGIN
             );
 
         V_LEARNER_ID :=
-            LEARNER_ITEM.LEARNER_ID;
+            RECIPIENT_ITEM.LEARNER_ID;
 
         V_EMPLOYEE_ID :=
-            LEARNER_ITEM.EMPLOYEE_ID;
+            RECIPIENT_ITEM.EMPLOYEE_ID;
 
         V_LEARNER_NAME :=
-            LEARNER_ITEM.LEARNER_NAME;
-
-        V_EMAIL :=
-            LEARNER_ITEM.EMAIL;
+            RECIPIENT_ITEM.LEARNER_NAME;
 
         V_ENROLLMENT_ID :=
-            LEARNER_ITEM.ENROLLMENT_ID;
+            RECIPIENT_ITEM.ENROLLMENT_ID;
 
-        V_CERTIFICATION_ID :=
-            LEARNER_ITEM.CERTIFICATION_ID;
+        V_CERTIFICATION_NAME :=
+            RECIPIENT_ITEM.CERTIFICATION_NAME;
 
         V_TARGET_COMPLETION_DATE :=
-            LEARNER_ITEM.TARGET_COMPLETION_DATE;
+            RECIPIENT_ITEM.TARGET_COMPLETION_DATE;
 
         V_LAST_ACTIVITY_AT :=
-            LEARNER_ITEM.LAST_ACTIVITY_AT;
+            RECIPIENT_ITEM.LAST_ACTIVITY_AT;
 
         V_DAYS_INACTIVE :=
-            LEARNER_ITEM.DAYS_SINCE_LAST_ACTIVITY;
+            RECIPIENT_ITEM.DAYS_SINCE_LAST_ACTIVITY;
+
+        V_RECIPIENT_TYPE :=
+            RECIPIENT_ITEM.RECIPIENT_TYPE;
+
+        V_RECIPIENT_NAME :=
+            RECIPIENT_ITEM.RECIPIENT_NAME;
+
+        V_RECIPIENT_EMAIL :=
+            RECIPIENT_ITEM.RECIPIENT_EMAIL;
 
 
-        /*----------------------------------------------------------------------
-          Prepare a simple email subject and message
-        ----------------------------------------------------------------------*/
+        IF (V_RECIPIENT_TYPE = 'LEARNER') THEN
 
-        V_EMAIL_SUBJECT :=
-            'Weekly certification progress reminder';
+            V_EMAIL_SUBJECT :=
+                'Weekly certification progress reminder';
 
+            V_EMAIL_BODY :=
+                'Hello ' ||
+                V_RECIPIENT_NAME ||
+                ',' ||
+                CHR(10) ||
+                CHR(10) ||
+                'This is a weekly reminder to update your learning progress for ' ||
+                V_CERTIFICATION_NAME ||
+                '.' ||
+                CHR(10) ||
+                CHR(10) ||
+                'Target completion date: ' ||
+                TO_VARCHAR(
+                    V_TARGET_COMPLETION_DATE,
+                    'YYYY-MM-DD'
+                ) ||
+                CHR(10) ||
+                'Days since the last recorded activity: ' ||
+                V_DAYS_INACTIVE ||
+                CHR(10) ||
+                CHR(10) ||
+                'Please update the topics you have started or completed.' ||
+                CHR(10) ||
+                CHR(10) ||
+                'Snowflake Certification Enablement Platform';
 
-        V_EMAIL_BODY :=
-            'Hello ' ||
-            V_LEARNER_NAME ||
-            ',' ||
-            CHR(10) ||
-            CHR(10) ||
-            'This is a weekly reminder to update your learning progress for ' ||
-            V_CERTIFICATION_ID ||
-            '.' ||
-            CHR(10) ||
-            CHR(10) ||
-            'Target completion date: ' ||
-            TO_VARCHAR(
-                V_TARGET_COMPLETION_DATE,
-                'YYYY-MM-DD'
-            ) ||
-            CHR(10) ||
-            'Days since the last recorded activity: ' ||
-            V_DAYS_INACTIVE ||
-            CHR(10) ||
-            CHR(10) ||
-            'Please update the topics you have started or completed.' ||
-            CHR(10) ||
-            CHR(10) ||
-            'Snowflake Certification Enablement Platform';
+        ELSE
 
+            V_EMAIL_SUBJECT :=
+                'Learner certification progress follow-up';
 
-        /*----------------------------------------------------------------------
-          Simulation mode
+            V_EMAIL_BODY :=
+                'Hello ' ||
+                V_RECIPIENT_NAME ||
+                ',' ||
+                CHR(10) ||
+                CHR(10) ||
+                V_LEARNER_NAME ||
+                ' has not recorded learning activity for ' ||
+                V_DAYS_INACTIVE ||
+                ' days for ' ||
+                V_CERTIFICATION_NAME ||
+                '.' ||
+                CHR(10) ||
+                CHR(10) ||
+                'Target completion date: ' ||
+                TO_VARCHAR(
+                    V_TARGET_COMPLETION_DATE,
+                    'YYYY-MM-DD'
+                ) ||
+                CHR(10) ||
+                CHR(10) ||
+                'Please follow up with the learner and support the progress update.' ||
+                CHR(10) ||
+                CHR(10) ||
+                'Snowflake Certification Enablement Platform';
 
-          The candidate is logged, but an email is not sent.
-        ----------------------------------------------------------------------*/
+        END IF;
+
 
         IF (V_SEND_ENABLED = FALSE) THEN
 
@@ -509,6 +638,8 @@ BEGIN
                 ENROLLMENT_ID,
                 LEARNER_ID,
                 EMPLOYEE_ID,
+                RECIPIENT_TYPE,
+                RECIPIENT_NAME,
                 RECIPIENT_EMAIL,
                 REMINDER_STATUS,
                 REMINDER_SUBJECT,
@@ -522,7 +653,9 @@ BEGIN
                 :V_ENROLLMENT_ID,
                 :V_LEARNER_ID,
                 :V_EMPLOYEE_ID,
-                :V_EMAIL,
+                :V_RECIPIENT_TYPE,
+                :V_RECIPIENT_NAME,
+                :V_RECIPIENT_EMAIL,
                 'SIMULATED',
                 :V_EMAIL_SUBJECT,
                 NULL,
@@ -534,14 +667,6 @@ BEGIN
             V_SIMULATED_COUNT :=
                 V_SIMULATED_COUNT + 1;
 
-
-        /*----------------------------------------------------------------------
-          Live mode
-
-          Snowflake attempts to send the email through the configured
-          notification integration.
-        ----------------------------------------------------------------------*/
-
         ELSE
 
             BEGIN
@@ -551,7 +676,7 @@ BEGIN
 
                 CALL SYSTEM$SEND_EMAIL(
                     :V_EMAIL_INTEGRATION_NAME,
-                    :V_EMAIL,
+                    :V_RECIPIENT_EMAIL,
                     :V_EMAIL_SUBJECT,
                     :V_EMAIL_BODY
                 )
@@ -563,6 +688,8 @@ BEGIN
                     ENROLLMENT_ID,
                     LEARNER_ID,
                     EMPLOYEE_ID,
+                    RECIPIENT_TYPE,
+                    RECIPIENT_NAME,
                     RECIPIENT_EMAIL,
                     REMINDER_STATUS,
                     REMINDER_SUBJECT,
@@ -576,7 +703,9 @@ BEGIN
                     :V_ENROLLMENT_ID,
                     :V_LEARNER_ID,
                     :V_EMPLOYEE_ID,
-                    :V_EMAIL,
+                    :V_RECIPIENT_TYPE,
+                    :V_RECIPIENT_NAME,
+                    :V_RECIPIENT_EMAIL,
                     'SENT',
                     :V_EMAIL_SUBJECT,
                     NULL,
@@ -587,7 +716,6 @@ BEGIN
 
                 V_SENT_COUNT :=
                     V_SENT_COUNT + 1;
-
 
             EXCEPTION
 
@@ -601,6 +729,8 @@ BEGIN
                         ENROLLMENT_ID,
                         LEARNER_ID,
                         EMPLOYEE_ID,
+                        RECIPIENT_TYPE,
+                        RECIPIENT_NAME,
                         RECIPIENT_EMAIL,
                         REMINDER_STATUS,
                         REMINDER_SUBJECT,
@@ -614,7 +744,9 @@ BEGIN
                         :V_ENROLLMENT_ID,
                         :V_LEARNER_ID,
                         :V_EMPLOYEE_ID,
-                        :V_EMAIL,
+                        :V_RECIPIENT_TYPE,
+                        :V_RECIPIENT_NAME,
+                        :V_RECIPIENT_EMAIL,
                         'FAILED',
                         :V_EMAIL_SUBJECT,
                         :V_FAILURE_MESSAGE,
@@ -633,13 +765,9 @@ BEGIN
     END FOR;
 
 
-    /*--------------------------------------------------------------------------
-      Return the reminder-run result
-    --------------------------------------------------------------------------*/
-
     RETURN
-        'Weekly reminder processing completed. Candidates: ' ||
-        V_CANDIDATE_COUNT ||
+        'Weekly reminder processing completed. Recipient reminders: ' ||
+        V_RECIPIENT_COUNT ||
         ', emails sent: ' ||
         V_SENT_COUNT ||
         ', simulated: ' ||
@@ -655,13 +783,6 @@ $$;
 /*==============================================================================
   7. WEEKLY REMINDER TASK
 ==============================================================================*/
-
-/*------------------------------------------------------------------------------
-  Schedule:
-  Every Monday at 9:00 AM, India time.
-
-  The Task remains suspended after creation.
-------------------------------------------------------------------------------*/
 
 CREATE OR REPLACE TASK
 CONTROL.TSK_SEND_PROGRESS_REMINDERS_WEEKLY
@@ -681,22 +802,27 @@ AS
 ==============================================================================*/
 
 /*------------------------------------------------------------------------------
-  Test in simulation mode
+  Test both recipients in simulation mode.
 ------------------------------------------------------------------------------*/
 
 /*
+UPDATE CONTROL.REMINDER_CONFIGURATION
+
+SET
+    REMINDER_MODE = 'ALL_ACTIVE',
+    SEND_ENABLED = FALSE,
+    UPDATED_AT = CURRENT_TIMESTAMP()
+
+WHERE CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER';
+
+
 CALL CONTROL.SP_SEND_CERT_ENABLEMENT_PROGRESS_REMINDERS();
-*/
 
 
-/*------------------------------------------------------------------------------
-  Review simulation or email results
-------------------------------------------------------------------------------*/
-
-/*
 SELECT
-    REMINDER_ID,
     EMPLOYEE_ID,
+    RECIPIENT_TYPE,
+    RECIPIENT_NAME,
     RECIPIENT_EMAIL,
     REMINDER_STATUS,
     FAILURE_MESSAGE,
@@ -704,12 +830,32 @@ SELECT
 
 FROM CONTROL.REMINDER_NOTIFICATION_LOG
 
-ORDER BY REMINDER_SENT_AT DESC;
+ORDER BY
+    REMINDER_SENT_AT DESC,
+    EMPLOYEE_ID,
+    RECIPIENT_TYPE;
 */
 
 
 /*------------------------------------------------------------------------------
-  Enable live email only after recipient emails have been verified
+  Restore the normal inactivity rule after testing.
+------------------------------------------------------------------------------*/
+
+/*
+UPDATE CONTROL.REMINDER_CONFIGURATION
+
+SET
+    REMINDER_MODE = 'INACTIVE_ONLY',
+    INACTIVITY_DAYS = 7,
+    SEND_ENABLED = FALSE,
+    UPDATED_AT = CURRENT_TIMESTAMP()
+
+WHERE CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER';
+*/
+
+
+/*------------------------------------------------------------------------------
+  Enable live email only after learner and Pod Lead emails are verified.
 ------------------------------------------------------------------------------*/
 
 /*
@@ -724,36 +870,14 @@ WHERE CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER';
 
 
 /*------------------------------------------------------------------------------
-  Change the reminder rule to all active learners if required
-------------------------------------------------------------------------------*/
-
-/*
-UPDATE CONTROL.REMINDER_CONFIGURATION
-
-SET
-    REMINDER_MODE = 'ALL_ACTIVE',
-    UPDATED_AT = CURRENT_TIMESTAMP()
-
-WHERE CONFIG_ID = 'WEEKLY_PROGRESS_REMINDER';
-*/
-
-
-/*------------------------------------------------------------------------------
-  Resume the weekly Task after testing
+  Resume or suspend the weekly Task.
 ------------------------------------------------------------------------------*/
 
 /*
 ALTER TASK
     CONTROL.TSK_SEND_PROGRESS_REMINDERS_WEEKLY
 RESUME;
-*/
 
-
-/*------------------------------------------------------------------------------
-  Suspend the weekly Task when it is not required
-------------------------------------------------------------------------------*/
-
-/*
 ALTER TASK
     CONTROL.TSK_SEND_PROGRESS_REMINDERS_WEEKLY
 SUSPEND;

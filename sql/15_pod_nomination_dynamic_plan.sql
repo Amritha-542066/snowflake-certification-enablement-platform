@@ -1,6 +1,7 @@
 /*==============================================================================
   Snowflake Certification Enablement Platform
   Step 15: Pod nomination and dynamic learning plan
+  Incremental-update fix: Preserve the original plan start date.
 
   Purpose:
   - Keep Snowflake-generated identifiers inside Snowflake.
@@ -147,6 +148,7 @@ DECLARE
     V_CERTIFICATION_COUNT          NUMBER DEFAULT 0;
     V_TOPIC_COUNT                  NUMBER DEFAULT 0;
     V_PLAN_WEEKS                   NUMBER DEFAULT 0;
+    V_PLAN_START_DATE              DATE;
 
     V_POD_ID                       VARCHAR;
     V_POD_LEAD_EMPLOYEE_ID         VARCHAR;
@@ -336,23 +338,6 @@ BEGIN
         );
 
 
-    /* Calculate the dynamic duration from today to the completion date. */
-
-    V_PLAN_WEEKS :=
-        GREATEST(
-            1,
-            CEIL(
-                (
-                    DATEDIFF(
-                        'DAY',
-                        CURRENT_DATE(),
-                        P_TARGET_COMPLETION_DATE
-                    ) + 1
-                ) / 7.0
-            )
-        );
-
-
     /* Generate stable internal identifiers. */
 
     V_LEARNER_ID :=
@@ -389,6 +374,42 @@ BEGIN
                 256
             ),
             20
+        );
+
+
+    /*
+      Preserve the original enrollment date when an existing nomination is
+      updated. New enrollments start on the current processing date.
+    */
+
+    SELECT
+        COALESCE(
+            MAX(ENROLLED_DATE),
+            CURRENT_DATE()
+        )
+
+    INTO
+        :V_PLAN_START_DATE
+
+    FROM CORE.ENROLLMENTS
+
+    WHERE ENROLLMENT_ID = :V_ENROLLMENT_ID;
+
+
+    /* Calculate the dynamic duration from the preserved plan start date. */
+
+    V_PLAN_WEEKS :=
+        GREATEST(
+            1,
+            CEIL(
+                (
+                    DATEDIFF(
+                        'DAY',
+                        V_PLAN_START_DATE,
+                        P_TARGET_COMPLETION_DATE
+                    ) + 1
+                ) / 7.0
+            )
         );
 
 
@@ -686,7 +707,7 @@ BEGIN
         DATEADD(
             'WEEK',
             PLANNED_WEEK_NUMBER - 1,
-            CURRENT_DATE()
+            :V_PLAN_START_DATE
         ) AS PLANNED_START_DATE,
 
         LEAST(
@@ -696,7 +717,7 @@ BEGIN
                 DATEADD(
                     'WEEK',
                     PLANNED_WEEK_NUMBER - 1,
-                    CURRENT_DATE()
+                    :V_PLAN_START_DATE
                 )
             ),
             :P_TARGET_COMPLETION_DATE
