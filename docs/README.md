@@ -17,22 +17,26 @@ A new developer should read the documentation in this order:
 3. [Data Model](data-model.md)
    Describes the logical data model, table responsibilities, relationships and proposed improvements.
 
-4. [Stored Procedure and Task Catalogue](procedure-catalog.md)
+4. [PostgreSQL Data-Modelling Study](postgresql-data-modeling-study.md)
+
+   Documents the fictional PostgreSQL exercise used to study table relationships, ER diagrams, cardinality and normalization. This model is not deployed in Snowflake.
+
+5. [Stored Procedure and Task Catalogue](procedure-catalog.md)
    Lists the procedures and Tasks used by each pipeline.
 
-5. [Deployment Guide](deployment-guide.md)
+6. [Deployment Guide](deployment-guide.md)
    Provides prerequisites, SQL execution order, verification steps, Task management and deployment guidance.
 
-6. [CSV Upload Guide](csv-upload-guide.md)
+7. [CSV Upload Guide](csv-upload-guide.md)
    Describes supported input files, required columns, upload steps, processing and rejected-record handling.
 
-7. [Test Results](test-results.md)
+8. [Test Results](test-results.md)
    Records the previous functional, validation and automation test results.
 
-8. [Assumptions and Limitations](assumptions-and-limitations.md)
+9. [Assumptions and Limitations](assumptions-and-limitations.md)
    Documents business assumptions, technical assumptions, current limitations and decisions requiring review.
 
-9. [Version Roadmap](roadmap.md)
+10. [Version Roadmap](roadmap.md)
    Separates the current foundation from future operational and automation enhancements.
 
 ## Documentation Catalogue
@@ -41,6 +45,7 @@ A new developer should read the documentation in this order:
 |---|---|---|
 | `architecture.md` | Current platform layers and workflows | Current |
 | `data-model.md` | Logical model and proposed structural improvements | Under review |
+| `postgresql-data-modeling-study.md` | PostgreSQL ER-diagram and normalization learning exercise | Proposed study; not deployed |
 | `procedure-catalog.md` | Procedure and Task inventory | Current |
 | `deployment-guide.md` | Deployment and operating instructions | Current |
 | `csv-upload-guide.md` | Input-file and processing instructions | Current |

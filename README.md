@@ -145,7 +145,8 @@ Before changing Snowflake tables, the proposed model must be reviewed and approv
 Relevant documentation:
 
 - [Platform architecture](docs/architecture.md)
-- [Data model](docs/data-model.md)
+- [Proposed data model](docs/data-model.md)
+- [PostgreSQL data-modelling study](docs/postgresql-data-modeling-study.md)
 - [Assumptions and limitations](docs/assumptions-and-limitations.md)
 - [Roadmap](docs/roadmap.md)
 
@@ -175,6 +176,7 @@ snowpro-core-enablement-platform/
 |   |-- procedure-catalog.md
 |   |-- roadmap.md
 |   `-- test-results.md
+    |-- postgresql-data-modeling-study.md
 |
 |-- sql/
 |   |-- 01_setup.sql
@@ -322,13 +324,12 @@ Start with:
 
 1. [Documentation index](docs/README.md)
 2. [Architecture](docs/architecture.md)
-3. [Data model](docs/data-model.md)
-4. [Procedure catalogue](docs/procedure-catalog.md)
-5. [Deployment guide](docs/deployment-guide.md)
-6. [CSV upload guide](docs/csv-upload-guide.md)
-7. [Test results](docs/test-results.md)
-8. [Assumptions and limitations](docs/assumptions-and-limitations.md)
-9. [Roadmap](docs/roadmap.md)
+3. [Proposed data model](docs/data-model.md)
+4. [PostgreSQL data-modelling study](docs/postgresql-data-modeling-study.md)
+5. [Procedure catalogue](docs/procedure-catalog.md)
+6. [Deployment guide](docs/deployment-guide.md)
+7. [CSV upload guide](docs/csv-upload-guide.md)
+8. [Test results](docs/test-results.md)
 
 ---
 
