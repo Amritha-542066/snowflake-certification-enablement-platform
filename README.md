@@ -2,105 +2,152 @@
 
 ## Overview
 
-The Snowflake Certification Enablement Platform is a Snowflake-based learning platform for employees preparing for the SnowPro Core certification.
+The Snowflake Certification Enablement Platform is a proof-of-concept platform for managing an employee's certification journey in Snowflake.
 
-It provides structured learning paths based specifically on a learner's Snowflake experience and tracks their progress from registration to certification readiness.
+It supports:
 
-The project is designed for multiple learners and supports continuous data processing, progress tracking, analytics, security and data-quality validation.
+- Certification reference data such as exam domains and study topics
+- Employee and Pod Lead nomination
+- Certification enrollment
+- Learner-specific topic planning
+- Progress tracking
+- Readiness analytics
+- Inactivity reminders
+- Validation, rejection handling and pipeline logging
 
----
+The current implementation supports the SnowPro Core certification. The design is intended to support additional certifications after architecture review.
 
-## Learning Paths
-
-| Snowflake experience | Duration | Weekly study hours |
-|---|---:|---:|
-| Fresher | 12 weeks | 8 hours |
-| 0–5 years | 10 weeks | 7 hours |
-| 5–9 years | 8 weeks | 6 hours |
-| 9+ years | 6 weeks | 5 hours |
-
-The learning timelines can be adjusted based on feedback and business requirements.
+> **Project status:** Proof of concept. The main Snowflake workflows are implemented, but the data model and dynamic-enrollment analytics are still under review. Live email sending and external-source integration are not enabled.
 
 ---
 
-## Main Features
+## Current Workflows
 
-- Experience-based SnowPro Core learning paths
-- Five certification exam domains
-- Thirty-one structured study topics
-- Weekly study schedules
-- Reusable learner-registration procedure
-- Automatic topic assignment
-- Topic-level progress tracking
-- Continuous learning-activity processing
-- Mock-assessment tracking
-- Certification-readiness analytics
-- Role-based access control
-- Repeatable data-quality tests
-- Git-based source control and documentation
-
----
-
-## Architecture
+### 1. Study-topic ingestion
 
 ```text
 Study-topic CSV
-      ↓
-Internal Stage
-      ↓
-RAW Inbox
-      ↓
-Stream and Task
-      ↓
-Validation Procedure
-      ├── Valid records → CORE
-      └── Invalid records → CONTROL.REJECTED_RECORDS
+    -> Snowflake internal stage
+    -> RAW inbox table
+    -> Stream
+    -> Scheduled Task
+    -> Validation procedure
+    -> Valid records: CORE
+    -> Invalid records: CONTROL rejection table
+```
 
-Learner Registration
-      ↓
-Experience-Based Learning Path
-      ↓
-Weekly Topic Schedule
-      ↓
-Learning Events
-      ↓
-Stream and Task
-      ↓
-Topic Progress
-      ↓
-Analytics and Readiness Views
+### 2. Pod Lead nomination
+
+A Pod Lead provides business-friendly information such as:
+
+- Employee ID and name
+- Email and department
+- Pod and Pod Lead
+- Certification
+- Target completion date
+
+The Pod Lead does not need to supply internal platform IDs.
+
+```text
+Nomination CSV
+    -> Internal stage
+    -> RAW nomination inbox
+    -> Stream
+    -> Scheduled Task
+    -> Nomination-processing procedure
+    -> Business nomination procedure
+    -> Learner, membership, nomination and enrollment
+    -> Learner-specific topic plan
+    -> Initial topic progress
+```
+
+The processing procedure validates the input structure. The business procedure validates the Pod Lead, Pod, certification and active topics before creating the enrollment and plan.
+
+### 3. Learning progress
+
+```text
+Progress CSV or procedure call
+    -> RAW progress inbox or learning event
+    -> Stream
+    -> Scheduled Task
+    -> Progress-processing procedure
+    -> CORE learning events
+    -> Topic progress update
+```
+
+### 4. Weekly reminders
+
+The reminder workflow identifies active learners who have not recorded activity within the configured period.
+
+It prepares:
+
+- One reminder for the learner
+- One follow-up notification for the Pod Lead
+
+The reminder workflow is in simulation mode by default. Live email sending must not be enabled until the notification integration and recipient addresses are approved and verified.
+
+---
+
+## Snowflake Architecture
+
+The database is separated into four schemas:
+
+| Schema | Responsibility |
+|---|---|
+| `RAW` | Receives incoming records before business validation |
+| `CORE` | Stores validated business data |
+| `CONTROL` | Contains procedures, Tasks, configuration, rejection records and pipeline logs |
+| `ANALYTICS` | Contains reporting and readiness views |
+
+The development environment uses:
+
+```text
+Warehouse: WH_CERT_ENABLEMENT_DEV_XS
+Database:  DB_CERT_ENABLEMENT_DEV
 ```
 
 ---
 
-## Snowflake Objects
+## Implemented Components
 
-### Warehouse
-
-```text
-WH_CERT_ENABLEMENT_DEV_XS
-```
-
-Configuration:
-
-- X-Small
-- Auto-suspend enabled
-- Auto-resume enabled
-
-### Database
-
-```text
-DB_CERT_ENABLEMENT_DEV
-```
-
-### Schemas
-
-| Schema | Purpose |
+| Area | Current status |
 |---|---|
-| `RAW` | Incoming source data |
-| `CORE` | Validated certification and learner data |
-| `CONTROL` | Pipeline procedures, Tasks, logs and rejected records |
-| `ANALYTICS` | Progress, schedule and readiness views |
+| Snowflake environment and schemas | Implemented |
+| Certification, domain and topic reference data | Implemented |
+| Study-topic CSV pipeline | Implemented |
+| Fixed experience-based learner registration | Implemented as an earlier workflow |
+| Pod Lead nomination pipeline | Implemented |
+| Dynamic learner-specific topic planning | Implemented |
+| Learner-information CSV pipeline | Implemented |
+| Learner-progress CSV pipeline | Implemented |
+| Learning-event processing | Implemented |
+| Readiness and progress analytics | Implemented, but dynamic-enrollment alignment requires review |
+| Role-based access control | Implemented for the existing objects; newer objects require review |
+| Weekly reminder framework | Implemented in simulation mode |
+| Automated live email sending | Not enabled |
+| SharePoint or approved external ingestion | Roadmap |
+| Streamlit user interface | Roadmap |
+| Recommendation agent | Roadmap |
+
+---
+
+## Current and Proposed Data Models
+
+The repository currently represents two different stages of the platform:
+
+1. The existing Snowflake implementation created by the numbered SQL files.
+2. A proposed relational model studied in PostgreSQL using fictional data.
+
+The PostgreSQL model is a design and normalization exercise. It has not replaced the existing Snowflake `CORE` model.
+
+Before changing Snowflake tables, the proposed model must be reviewed and approved.
+
+Relevant documentation:
+
+- [Platform architecture](docs/architecture.md)
+- [Data model](docs/data-model.md)
+- [Assumptions and limitations](docs/assumptions-and-limitations.md)
+- [Roadmap](docs/roadmap.md)
 
 ---
 
@@ -108,395 +155,204 @@ DB_CERT_ENABLEMENT_DEV
 
 ```text
 snowpro-core-enablement-platform/
-├── data/
-│   ├── study_topics.csv
-│   ├── learner_information.csv
-│   ├── learner_progress.csv
-│   └── certification_nominations.csv
-├── docs/
-│   ├── DESIGN_DOCUMENT.md
-│   ├── DEPLOYMENT_GUIDE.md
-│   ├── CSV_UPLOAD_GUIDE.md
-│   └── TEST_RESULTS.md
-├── sql/
-│   ├── 01_setup.sql
-│   ├── 02_reference_tables.sql
-│   ├── 03_learner_tracking_tables.sql
-│   ├── 04_seed_foundation_data.sql
-│   ├── 05_raw_ingestion_setup.sql
-│   ├── 06_load_study_topics.sql
-│   ├── 07_study_topics_pipeline.sql
-│   ├── 08_learner_registration.sql
-│   ├── 09_learning_schedule.sql
-│   ├── 10_learning_activity_pipeline.sql
-│   ├── 11_analytics_views.sql
-│   ├── 12_rbac.sql
-│   ├── 13_learner_information_pipeline.sql
-│   ├── 14_learner_progress_pipeline.sql
-│   ├── 15_pod_nomination_dynamic_plan.sql
-│   ├── 16_pod_nomination_pipeline.sql
-│   └── 17_weekly_progress_reminders.sql
-├── tests/
-│   ├── 01_study_topics_pipeline_test.sql
-│   ├── 02_platform_data_quality_tests.sql
-│   ├── 03_csv_pipeline_validation_tests.sql
-│   └── 04_pod_dynamic_plan_reminder_tests.sql
-├── .gitignore
-└── README.md
+|
+|-- README.md
+|-- .gitignore
+|
+|-- data/
+|   |-- certification_nominations.csv
+|   |-- learner_information.csv
+|   |-- learner_progress.csv
+|   `-- study_topics.csv
+|
+|-- docs/
+|   |-- README.md
+|   |-- architecture.md
+|   |-- assumptions-and-limitations.md
+|   |-- csv-upload-guide.md
+|   |-- data-model.md
+|   |-- deployment-guide.md
+|   |-- procedure-catalog.md
+|   |-- roadmap.md
+|   `-- test-results.md
+|
+|-- sql/
+|   |-- 01_setup.sql
+|   |-- 02_reference_tables.sql
+|   |-- 03_learner_tracking_tables.sql
+|   |-- 04_seed_foundation_data.sql
+|   |-- 05_raw_ingestion_setup.sql
+|   |-- 06_load_study_topics.sql
+|   |-- 07_study_topics_pipeline.sql
+|   |-- 08_learner_registration.sql
+|   |-- 09_learning_schedule.sql
+|   |-- 10_learning_activity_pipeline.sql
+|   |-- 11_analytics_views.sql
+|   |-- 12_rbac.sql
+|   |-- 13_learner_information_pipeline.sql
+|   |-- 14_learner_progress_pipeline.sql
+|   |-- 15_pod_nomination_dynamic_plan.sql
+|   |-- 16_pod_nomination_pipeline.sql
+|   `-- 17_weekly_progress_reminders.sql
+|
+`-- tests/
+    |-- 01_study_topics_pipeline_test.sql
+    |-- 02_platform_data_quality_tests.sql
+    |-- 03_csv_pipeline_validation_tests.sql
+    |-- 04_pod_dynamic_plan_reminder_tests.sql
+    `-- data/
+        |-- corrected_learners.csv
+        |-- corrected_progress.csv
+        |-- invalid_learners.csv
+        `-- invalid_progress.csv
 ```
 
 ---
 
-## Continuous Data Pipelines
+## SQL Deployment Order
 
-### Study-Topic Pipeline
+The SQL files are numbered according to dependency order.
 
-```text
-CSV → Stage → RAW → Stream → Task → Validation → CORE
-```
-
-The pipeline:
-
-- Processes newly loaded study topics.
-- Moves valid records into CORE.
-- Stores invalid records with rejection reasons.
-- Records each pipeline execution.
-
-### Learning-Activity Pipeline
+Execute them from:
 
 ```text
-Activity → Learning Events → Stream → Task → Topic Progress
+sql/01_setup.sql
 ```
 
-The pipeline:
-
-- Records study time and completion percentage.
-- Detects new activities.
-- Updates learner progress automatically.
-- Maintains activity timestamps and completion status.
-
----
-
-## Analytics Views
-
-| View | Purpose |
-|---|---|
-| `VW_WEEKLY_STUDY_PLAN` | Weekly study schedule for each learning path |
-| `VW_LEARNER_PROGRESS` | Overall learner progress and study hours |
-| `VW_DOMAIN_PROGRESS` | Progress across the five exam domains |
-| `VW_CERTIFICATION_READINESS` | Readiness score, status and recommendation |
-
-The readiness score is an internal learning indicator and is not a guarantee of certification success.
-
----
-
-## Roles
-
-| Role | Purpose |
-|---|---|
-| `FR_CERT_ENABLEMENT_LEARNER_DEV` | View study plans and record activities |
-| `FR_CERT_ENABLEMENT_PROGRAM_MANAGER_DEV` | Register learners, maintain assessments and view analytics |
-| `FR_CERT_ENABLEMENT_PLATFORM_ADMIN_DEV` | Manage the complete platform |
-
-Actual Snowflake usernames are assigned to roles separately and are not stored in Git.
-
----
-
-## Data Quality
-
-The platform includes two test files:
-
-```text
-tests/01_study_topics_pipeline_test.sql
-tests/02_platform_data_quality_tests.sql
-```
-
-The platform-level test file contains 12 checks covering:
-
-- Exam-domain weights
-- Learning-path availability
-- Topic assignments
-- Planned-week validation
-- Progress percentages and study hours
-- Orphan records
-- Duplicate learners
-- Duplicate enrollments
-- Assessment scores
-- Experience-level mapping
-
-Expected result:
-
-```text
-12 PASS
-0 FAIL
-```
-
----
-
-## Deployment
-
-For the complete deployment order and instructions, see:
-
-```text
-docs/DEPLOYMENT_GUIDE.md
-```
-
-The SQL files are stored in Git and can be executed through Snowsight or Snowflake CLI.
-
-Real learner details and real Snowflake usernames must not be committed to the repository.
-
----
-
-## Demo
-
-For the recommended presentation flow, see:
-
-```text
-docs/DEMO_GUIDE.md
-```
-
-The demo should primarily present the implementation from Git or VS Code.
-
----
-
-## Technologies and Snowflake Features
-
-- Snowflake SQL
-- Virtual warehouses
-- Internal stages
-- CSV file formats
-- `COPY INTO`
-- Streams
-- Tasks
-- SQL stored procedures
-- `MERGE`
-- Views
-- Role-based access control
-- Future grants
-- Git and GitHub
-
----
-
-## Current Limitations
-
-- Learner registration currently uses a stored-procedure call.
-- Assessment entry currently uses SQL.
-- Learning timelines may require adjustment after user feedback.
-- Streamlit is not included in the current phase.
-
----
-
-## Future Enhancement
-
-After approval, a Streamlit application can provide:
-
-- Learner self-registration
-- Personalized weekly plans
-- Progress-update forms
-- Mock-assessment entry
-- Readiness dashboards
-- Role-based page visibility
-
----
-
-## Project Status
-
-The Snowflake backend implementation is complete.
-
-Completed areas:
-
-- Environment setup
-- Certification data model
-- Continuous topic ingestion
-- Experience-based learning paths
-- Learner registration
-- Progress tracking
-- Analytics and readiness
-- RBAC
-- Data-quality testing
-- Deployment and demo documentation
-
-
-## CSV Learner and Progress Ingestion
-
-The platform supports CSV-based learner registration and learning-progress updates.
-
-### Learner Information
-
-The learner file is located at:
-
-```text
-data/learner_information.csv
-```
-
-Required fields:
-
-- Source record ID
-- Employee ID
-- Learner name
-- Email
-- Department
-- Snowflake experience in years
-
-The learner pipeline:
-
-1. Loads the CSV into `RAW.LEARNER_INFORMATION_INBOX`.
-2. Uses `RAW.STR_LEARNER_INFORMATION_INBOX` to detect new records.
-3. Calls `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_INFORMATION`.
-4. Validates learner information.
-5. Calls `CONTROL.SP_REGISTER_CERT_ENABLEMENT_LEARNER`.
-6. Assigns an experience-based learning path.
-7. Initializes all assigned topics.
-8. Stores invalid records with a rejection reason.
-9. Records the pipeline result.
-
-The implementation is available in:
-
-```text
-sql/13_learner_information_pipeline.sql
-```
-
-### Learner Progress
-
-The progress file is located at:
-
-```text
-data/learner_progress.csv
-```
-
-Required fields:
-
-- Activity ID
-- Employee ID
-- Topic ID
-- Event type
-- Duration in minutes
-- Completion percentage
-- Activity timestamp
-- Notes
-
-The progress pipeline:
-
-1. Loads the CSV into `RAW.LEARNER_PROGRESS_INBOX`.
-2. Uses `RAW.STR_LEARNER_PROGRESS_INBOX` to detect new records.
-3. Calls `CONTROL.SP_PROCESS_CERT_ENABLEMENT_LEARNER_PROGRESS`.
-4. Validates the learner, enrollment, topic and activity.
-5. Inserts valid activity into `CORE.LEARNING_EVENTS`.
-6. Uses the existing learning-events pipeline to update topic progress.
-7. Stores invalid records with a rejection reason.
-8. Records the pipeline result.
-
-The implementation is available in:
-
-```text
-sql/14_learner_progress_pipeline.sql
-```
-
-### Pod Lead Nomination and Dynamic Plans
-
-The current nomination flow uses one business-friendly file:
-
-```text
-data/certification_nominations.csv
-```
-
-The Pod Lead supplies employee, Pod, certification and target-completion information. Snowflake resolves internal IDs, creates or updates the enrollment and distributes all active topics across the available weeks.
-
-Incremental updates preserve the original enrollment date and existing topic progress.
-
-The implementation is available in:
-
-```text
-sql/15_pod_nomination_dynamic_plan.sql
-sql/16_pod_nomination_pipeline.sql
-```
-
-### Weekly Progress Reminders
-
-The reminder framework checks inactive enrollments and prepares notifications for both the learner and the corresponding Pod Lead. Simulation mode is enabled by default, and the scheduled Task remains suspended after testing.
-
-The implementation is available in:
+through:
 
 ```text
 sql/17_weekly_progress_reminders.sql
 ```
 
-## Validation and Error Handling
+Use a development Snowflake account first. Review environment-specific object names, email settings, role grants and Task states before deployment.
 
-Invalid records are stored in:
+For detailed instructions, see the [deployment guide](docs/deployment-guide.md).
 
-```text
-DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_REJECTED_RECORDS
-```
+---
 
-Pipeline execution results are stored in:
+## Input Files
 
-```text
-DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PIPELINE_RUN_LOG
-```
+The `data` directory contains development and demonstration inputs.
 
-Successfully accepted source IDs are stored in:
+| File | Purpose |
+|---|---|
+| `study_topics.csv` | Certification study-topic reference data |
+| `learner_information.csv` | Learner-registration data for the earlier workflow |
+| `learner_progress.csv` | Learner progress and activity updates |
+| `certification_nominations.csv` | Pod Lead certification nominations |
 
-```text
-DB_CERT_ENABLEMENT_DEV.CONTROL.CSV_PROCESSED_RECORDS
-```
+Do not commit real employee information, credentials, tokens or verified email addresses.
 
-This prevents the same source record from being accepted twice.
+For file formats and upload instructions, see the [CSV upload guide](docs/csv-upload-guide.md).
 
-Rejected records can be corrected, uploaded again and marked as resolved after successful processing.
+---
 
 ## Testing
 
-The test data is stored under:
+The repository contains four SQL test scripts:
 
-```text
-tests/data
-```
+| Test file | Purpose |
+|---|---|
+| `01_study_topics_pipeline_test.sql` | Tests the study-topic ingestion workflow |
+| `02_platform_data_quality_tests.sql` | Validates platform-level data-quality rules |
+| `03_csv_pipeline_validation_tests.sql` | Tests learner and progress CSV processing |
+| `04_pod_dynamic_plan_reminder_tests.sql` | Tests Pod nomination, dynamic planning and reminders |
 
-The complete CSV-pipeline validation script is:
+Test input files are stored under `tests/data`.
 
-```text
-tests/03_csv_pipeline_validation_tests.sql
-```
+Review the environment and expected data before executing the tests. Some tests insert demonstration records or call stored procedures.
 
-The testing results are documented in:
+Previous test evidence is recorded in [test results](docs/test-results.md).
 
-```text
-docs/TEST_RESULTS.md
-```
+---
 
-A total of 15 functional, validation and automation tests passed.
+## Stored Procedures and Tasks
 
-## Design Documentation
+Stored procedures perform validation and business processing.
 
-The platform design is documented in:
+Snowflake Tasks control when scheduled processing runs. Streams expose new table changes to the processing procedures.
 
-```text
-docs/DESIGN_DOCUMENT.md
-```
+For the procedure and Task inventory, see the [procedure catalogue](docs/procedure-catalog.md).
 
-## Task Management
+Tasks should remain suspended when automatic processing is not required, particularly in development or trial accounts.
 
-The following Snowflake Tasks are available:
+---
 
-- `TSK_PROCESS_STUDY_TOPICS_1MIN`
-- `TSK_PROCESS_LEARNER_INFORMATION_1MIN`
-- `TSK_PROCESS_LEARNER_PROGRESS_1MIN`
-- `TSK_PROCESS_LEARNING_EVENTS_5MIN`
+## Known Limitations
 
-The Tasks were successfully tested and then suspended to protect trial-account credits.
+- The proposed PostgreSQL data model has not been implemented in Snowflake.
+- The older fixed-path and newer dynamic-plan workflows currently coexist.
+- Dynamic enrollments and the existing analytics views require alignment.
+- Role grants for the newer objects require a complete review.
+- Progress relies on activity supplied by users or input files; the platform is not a full Learning Management System.
+- The reminder workflow uses simulation mode by default.
+- Live email recipients must be verified Snowflake users.
+- Manual file upload is still used.
+- Weighted topic allocation is a roadmap item, not part of the current implementation.
+- Certification results, expiry tracking and renewal reminders are roadmap items.
 
-Resume them only when automatic processing is required.
+See [assumptions and limitations](docs/assumptions-and-limitations.md) for more information.
+
+---
 
 ## Roadmap
 
-Planned enhancements include:
+Planned work is separated from the current proof of concept.
 
-- Connect the platform to the approved Mastech Excel source
-- Automatically load learner and progress data into the RAW layer
-- Add pipeline-failure and rejection notifications
-- Support additional Snowflake certifications
-- Make learning-path durations configurable
-- Make experience categories configurable
-- Add a Streamlit interface
-- Establish a formal cost baseline
+Major roadmap areas include:
+
+- Approved SharePoint or external-source ingestion
+- Support for additional certifications
+- Weighted topic scheduling
+- Extension and schedule-recalculation workflows
+- Certification results, validity and renewal tracking
+- Streamlit-based user interaction
+- Interview feedback and employee write-ups
+- Recommendation-agent integration
+- Partner-level certification reporting
+
+See the [version roadmap](docs/roadmap.md) for the planned version split.
+
+---
+
+## Documentation Guide
+
+Start with:
+
+1. [Documentation index](docs/README.md)
+2. [Architecture](docs/architecture.md)
+3. [Data model](docs/data-model.md)
+4. [Procedure catalogue](docs/procedure-catalog.md)
+5. [Deployment guide](docs/deployment-guide.md)
+6. [CSV upload guide](docs/csv-upload-guide.md)
+7. [Test results](docs/test-results.md)
+8. [Assumptions and limitations](docs/assumptions-and-limitations.md)
+9. [Roadmap](docs/roadmap.md)
+
+---
+
+## Security
+
+- Do not commit passwords, private keys, access tokens or personal access tokens.
+- Do not commit real employee data.
+- Keep live notification sending disabled until recipients and integrations are approved.
+- Review account-specific role grants before deployment.
+- Use least-privilege roles for operational access.
+
+---
+
+## Contribution Guidance
+
+Before extending the platform:
+
+1. Read the architecture and data-model documents.
+2. Confirm whether the change belongs to the current implementation or roadmap.
+3. Create a feature branch.
+4. Update SQL files in dependency order.
+5. Add or update relevant tests.
+6. Update the documentation.
+7. Test in a development account.
+8. Request review before merging.
+
+Avoid changing the current Snowflake physical model solely from the PostgreSQL practice model without architecture approval.

@@ -634,7 +634,7 @@ Status: **PASS**
 The following upload documentation was prepared:
 
 ```text
-docs/CSV_UPLOAD_GUIDE.md
+docs/csv-upload-guide.md
 ```
 
 The guide covers:

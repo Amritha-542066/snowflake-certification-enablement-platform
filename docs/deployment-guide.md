@@ -52,10 +52,9 @@ snowflake-certification-enablement-platform/
 │   └── certification_nominations.csv
 │
 ├── docs/
-│   ├── DESIGN_DOCUMENT.md
-│   ├── DEPLOYMENT_GUIDE.md
-│   ├── CSV_UPLOAD_GUIDE.md
-│   └── TEST_RESULTS.md
+│   ├── deployment-guide.md
+│   ├── csv-upload-guide.md
+│   └── test-results.md
 │
 ├── sql/
 │   ├── 01_setup.sql
@@ -1087,7 +1086,7 @@ All functional, validation and automation tests should return `PASS`.
 The recorded test results are available in:
 
 ```text
-docs/TEST_RESULTS.md
+docs/test-results.md
 ```
 
 ---
