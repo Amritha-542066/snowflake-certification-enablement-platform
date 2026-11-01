@@ -15,7 +15,9 @@ GRANT USAGE ON SCHEMA APP_SCHEMA
 -- The path begins at the root of the staged Native App files.
 EXECUTE IMMEDIATE FROM
     '/scripts/01_create_user_identity_model.sql';
-
+-- Load the controlled user, role and Pod demo personas.
+EXECUTE IMMEDIATE FROM
+    '/scripts/02_seed_user_identity_demo_data.sql';
 -- Create the Streamlit interface from the staged source files
 CREATE OR REPLACE STREAMLIT APP_SCHEMA.CERT_ENABLEMENT_UI
     FROM '/streamlit'
