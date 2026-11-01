@@ -12,7 +12,7 @@ GRANT USAGE ON SCHEMA APP_SCHEMA
     TO APPLICATION ROLE APP_USER;
 
 -- Create the Streamlit interface from the staged source files
-CREATE STREAMLIT IF NOT EXISTS APP_SCHEMA.CERT_ENABLEMENT_UI
+CREATE OR REPLACE STREAMLIT APP_SCHEMA.CERT_ENABLEMENT_UI
     FROM '/streamlit'
     MAIN_FILE = '/main.py'
     TITLE = 'Snowflake Certification Enablement Platform';
