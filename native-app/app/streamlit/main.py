@@ -1,5 +1,4 @@
 import streamlit as st
-from snowflake.snowpark.context import get_active_session
 
 
 st.set_page_config(
@@ -8,15 +7,7 @@ st.set_page_config(
 )
 
 
-session = get_active_session()
-
-current_user = session.sql(
-    """
-    SELECT
-        CURRENT_USER() AS LOGIN_NAME,
-        CURRENT_ROLE() AS SESSION_ROLE
-    """
-).collect()[0]
+viewer_user_name = st.user.user_name or "Unknown user"
 
 
 st.title("Snowflake Certification Enablement Platform")
@@ -35,13 +26,13 @@ user_column, role_column = st.columns(2)
 with user_column:
     st.metric(
         label="Snowflake login",
-        value=current_user["LOGIN_NAME"],
+        value=viewer_user_name,
     )
 
 with role_column:
     st.metric(
-        label="Current session role",
-        value=current_user["SESSION_ROLE"],
+        label="Platform role",
+        value="Pending profile mapping",
     )
 
 st.divider()

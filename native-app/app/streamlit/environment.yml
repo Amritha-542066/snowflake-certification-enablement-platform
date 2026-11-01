@@ -4,4 +4,4 @@ channels:
   - snowflake
 
 dependencies:
-  - streamlit=1.35.0
+  - streamlit=1.52.2
