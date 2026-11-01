@@ -1,0 +1,11 @@
+manifest_version: 1
+
+version:
+  name: v1
+  patch: 0
+  label: "Home Page and User Identity"
+
+artifacts:
+  setup_script: setup.sql
+  readme: README.md
+  default_streamlit: APP_SCHEMA.CERT_ENABLEMENT_UI
