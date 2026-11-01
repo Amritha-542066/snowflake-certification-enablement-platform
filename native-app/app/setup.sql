@@ -11,6 +11,11 @@ CREATE SCHEMA IF NOT EXISTS APP_SCHEMA;
 GRANT USAGE ON SCHEMA APP_SCHEMA
     TO APPLICATION ROLE APP_USER;
 
+-- Create the employee, role and Pod identity model.
+-- The path begins at the root of the staged Native App files.
+EXECUTE IMMEDIATE FROM
+    '/scripts/01_create_user_identity_model.sql';
+
 -- Create the Streamlit interface from the staged source files
 CREATE OR REPLACE STREAMLIT APP_SCHEMA.CERT_ENABLEMENT_UI
     FROM '/streamlit'
