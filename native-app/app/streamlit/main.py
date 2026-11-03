@@ -79,7 +79,8 @@ def load_registered_preview_personas():
             persona_type = row["ROLE_NAME"]
 
         personas[user_name] = (
-            f"{row['EMPLOYEE_NAME']} — {persona_type or 'Registered employee'}"
+            f"{row['EMPLOYEE_NAME']} - "
+            f"{persona_type or 'Registered employee'}"
         )
 
     return personas
@@ -111,6 +112,25 @@ def count_active_pod_members(employee_id):
     return result[0]["ACTIVE_MEMBER_COUNT"]
 
 
+def load_active_certifications():
+    """Return the active certifications available for nomination."""
+
+    return session.sql(
+        """
+        SELECT
+            CERTIFICATION_ID,
+            CERTIFICATION_CODE,
+            CERTIFICATION_NAME,
+            PROVIDER_NAME,
+            CERTIFICATION_LEVEL,
+            PREREQUISITE_CERTIFICATION_ID,
+            DISPLAY_ORDER
+        FROM APP_SCHEMA.VW_ACTIVE_CERTIFICATIONS
+        ORDER BY DISPLAY_ORDER
+        """
+    ).collect()
+
+
 st.title("Snowflake Certification Enablement Platform")
 
 st.write(
@@ -127,9 +147,9 @@ if viewer_user_name in PERSONA_PREVIEW_DEVELOPERS:
     registered_personas = load_registered_preview_personas()
 
     preview_labels = {
-        "__ACTUAL_USER__": f"Actual signed-in user — {viewer_user_name}",
+        "__ACTUAL_USER__": f"Actual signed-in user - {viewer_user_name}",
         **registered_personas,
-        UNREGISTERED_PREVIEW_USER: "Aarav Menon — Unregistered user",
+        UNREGISTERED_PREVIEW_USER: "Aarav Menon - Unregistered user",
     }
 
     preview_options = ["__ACTUAL_USER__"]
@@ -138,6 +158,7 @@ if viewer_user_name in PERSONA_PREVIEW_DEVELOPERS:
 
     with st.sidebar:
         st.header("Developer tools")
+
         selected_persona = st.selectbox(
             "Persona Preview",
             options=preview_options,
@@ -177,6 +198,7 @@ if not profile_rows:
         "This Snowflake login is not registered in the Certification "
         "Enablement Platform. Please contact the Studio Lead."
     )
+
     st.caption(f"Profile being evaluated: {context_user_name}")
     st.caption(f"Actual signed-in Snowflake login: {viewer_user_name}")
     st.stop()
@@ -190,6 +212,7 @@ if not profile["EMPLOYEE_ACTIVE_FLAG"]:
         "This employee profile is inactive and cannot currently access "
         "certification actions."
     )
+
     st.caption(f"Profile being evaluated: {context_user_name}")
     st.caption(f"Actual signed-in Snowflake login: {viewer_user_name}")
     st.stop()
@@ -200,6 +223,7 @@ if profile["ROLE_CODE"] is None:
         "This employee profile does not have an active platform role. "
         "Please contact the Studio Lead."
     )
+
     st.caption(f"Profile being evaluated: {context_user_name}")
     st.stop()
 
@@ -209,6 +233,7 @@ if profile["ROLE_CODE"] == "POD_MEMBER" and profile["POD_ID"] is None:
         "This employee profile is active, but is not assigned to an "
         "active Pod. A Pod assignment is required before self-nomination."
     )
+
     st.caption(f"Profile being evaluated: {context_user_name}")
     st.stop()
 
@@ -241,6 +266,7 @@ if preview_active:
     st.caption(f"Actual signed-in Snowflake login: {viewer_user_name}")
 else:
     st.caption(f"Signed-in Snowflake login: {viewer_user_name}")
+
 
 st.divider()
 
@@ -290,22 +316,131 @@ with action_three:
 
 
 if self_request_clicked:
-    st.success(
-        "Access check passed. The self-nomination form will be added "
-        "in the next implementation step."
-    )
+    st.session_state["nomination_type"] = "SELF"
 
 if pod_nomination_clicked:
-    st.success(
-        "Access check passed. Only active members of your own Pod "
-        "will be available for nomination."
-    )
+    st.session_state["nomination_type"] = "POD_MEMBER"
 
 if review_requests_clicked:
-    st.success(
-        "Access check passed. The approval queue will be added "
-        "in the nomination workflow."
+    st.info(
+        "The approval queue will be added in a later implementation step."
     )
+
+
+nomination_type = st.session_state.get("nomination_type")
+
+
+if nomination_type in {"SELF", "POD_MEMBER"}:
+    st.divider()
+    st.subheader("Choose a certification")
+
+    if nomination_type == "SELF":
+        st.write(
+            f"Certification request for: {profile['EMPLOYEE_NAME']}"
+        )
+    else:
+        st.write(
+            "Select the certification first. Pod-member selection will "
+            "be added in the next step."
+        )
+
+    certification_rows = load_active_certifications()
+
+    if not certification_rows:
+        st.warning(
+            "No active certifications are currently available."
+        )
+    else:
+        certification_by_id = {
+            row["CERTIFICATION_ID"]: row
+            for row in certification_rows
+        }
+
+        certification_options = list(certification_by_id.keys())
+
+        selected_certification_id = st.selectbox(
+            "Available certifications",
+            options=certification_options,
+            format_func=lambda certification_id: (
+                certification_by_id[certification_id][
+                    "CERTIFICATION_NAME"
+                ]
+            ),
+        )
+
+        selected_certification = certification_by_id[
+            selected_certification_id
+        ]
+
+        detail_one, detail_two, detail_three = st.columns(3)
+
+        with detail_one:
+            st.metric(
+                label="Provider",
+                value=selected_certification["PROVIDER_NAME"],
+            )
+
+        with detail_two:
+            st.metric(
+                label="Certification level",
+                value=selected_certification["CERTIFICATION_LEVEL"],
+            )
+
+        with detail_three:
+            prerequisite_id = selected_certification[
+                "PREREQUISITE_CERTIFICATION_ID"
+            ]
+
+            if prerequisite_id:
+                prerequisite_name = certification_by_id.get(
+                    prerequisite_id,
+                    {},
+                )
+
+                prerequisite_value = (
+                    prerequisite_name["CERTIFICATION_NAME"]
+                    if prerequisite_name
+                    else prerequisite_id
+                )
+            else:
+                prerequisite_value = "None"
+
+            st.metric(
+                label="Prerequisite",
+                value=prerequisite_value,
+            )
+
+        st.caption(
+            "Certification code: "
+            f"{selected_certification['CERTIFICATION_CODE']}"
+        )
+
+        if preview_active:
+            st.warning(
+                "Persona Preview is active. You can review the catalogue, "
+                "but no nomination will be submitted."
+            )
+
+        continue_column, cancel_column = st.columns(2)
+
+        with continue_column:
+            st.button(
+                "Continue",
+                disabled=True,
+                use_container_width=True,
+                help=(
+                    "Submission will be enabled after the nomination "
+                    "form is implemented."
+                ),
+            )
+
+        with cancel_column:
+            if st.button(
+                "Cancel",
+                use_container_width=True,
+            ):
+                st.session_state.pop("nomination_type", None)
+                st.rerun()
 
 
 if preview_active:
