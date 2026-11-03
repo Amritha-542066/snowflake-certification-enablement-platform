@@ -18,6 +18,9 @@ EXECUTE IMMEDIATE FROM
 -- Load the controlled user, role and Pod demo personas.
 EXECUTE IMMEDIATE FROM
     '/scripts/02_seed_user_identity_demo_data.sql';
+-- Create and seed the certification catalogue used by Streamlit.
+EXECUTE IMMEDIATE FROM
+    '/scripts/03_create_and_seed_certification_catalog.sql';
 -- Create the Streamlit interface from the staged source files
 CREATE OR REPLACE STREAMLIT APP_SCHEMA.CERT_ENABLEMENT_UI
     FROM '/streamlit'
