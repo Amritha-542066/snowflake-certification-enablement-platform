@@ -1,3 +1,6 @@
+import json
+from datetime import date, timedelta
+
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
@@ -131,12 +134,119 @@ def load_active_certifications():
     ).collect()
 
 
+def load_eligible_pod_members(pod_lead_employee_id):
+    """Return active members of the specified Pod Lead's own active Pod."""
+
+    return session.sql(
+        """
+        SELECT
+            POD_ID,
+            POD_NAME,
+            MEMBER_EMPLOYEE_ID,
+            MEMBER_SNOWFLAKE_USERNAME,
+            MEMBER_NAME,
+            MEMBER_DESIGNATION
+        FROM APP_SCHEMA.VW_ELIGIBLE_POD_MEMBERS
+        WHERE POD_LEAD_EMPLOYEE_ID = ?
+        ORDER BY MEMBER_NAME
+        """,
+        params=[pod_lead_employee_id],
+    ).collect()
+
+
+def normalize_procedure_result(result):
+    """Convert a procedure VARIANT result into a Python dictionary."""
+
+    if isinstance(result, dict):
+        return result
+
+    if isinstance(result, str):
+        return json.loads(result)
+
+    return dict(result)
+
+
+def submit_nomination(
+    nominator_employee_id,
+    candidate_employee_id,
+    certification_id,
+    preparation_start_date,
+    target_completion_date,
+    request_notes,
+    created_by_snowflake_username,
+):
+    """Call the owner-rights procedure that validates and stores a request."""
+
+    result = session.call(
+        "APP_SCHEMA.SP_SUBMIT_NOMINATION",
+        nominator_employee_id,
+        candidate_employee_id,
+        certification_id,
+        preparation_start_date,
+        target_completion_date,
+        request_notes,
+        created_by_snowflake_username,
+    )
+
+    return normalize_procedure_result(result)
+
+
+def load_pending_reviews(reviewer_employee_id):
+    """Return pending approval requests assigned to one reviewer."""
+
+    return session.sql(
+        """
+        SELECT
+            NOMINATION_ID,
+            NOMINATION_TYPE,
+            NOMINATOR_NAME,
+            CANDIDATE_NAME,
+            CERTIFICATION_NAME,
+            POD_NAME,
+            PREPARATION_START_DATE,
+            TARGET_COMPLETION_DATE,
+            NOMINATION_STATUS,
+            REQUEST_NOTES,
+            CREATED_AT
+        FROM APP_SCHEMA.VW_NOMINATION_DETAILS
+        WHERE ASSIGNED_REVIEWER_EMPLOYEE_ID = ?
+          AND NOMINATION_STATUS = 'PENDING_APPROVAL'
+        ORDER BY CREATED_AT
+        """,
+        params=[reviewer_employee_id],
+    ).collect()
+
+
+def decide_nomination(
+    nomination_id,
+    reviewer_employee_id,
+    decision,
+    decision_notes,
+):
+    """Approve or reject a request assigned to the current reviewer."""
+
+    result = session.call(
+        "APP_SCHEMA.SP_DECIDE_NOMINATION",
+        nomination_id,
+        reviewer_employee_id,
+        decision,
+        decision_notes,
+    )
+
+    return normalize_procedure_result(result)
+
+
 st.title("Snowflake Certification Enablement Platform")
 
 st.write(
     "Manage certification requests, approvals, learning plans "
     "and certification progress from one place."
 )
+
+action_message = st.session_state.pop("action_message", None)
+
+if action_message:
+    st.success(action_message)
 
 
 # Developer-only Persona Preview
@@ -177,6 +287,13 @@ if viewer_user_name in PERSONA_PREVIEW_DEVELOPERS:
     if selected_persona != "__ACTUAL_USER__":
         preview_active = True
         context_user_name = selected_persona
+
+
+# Clear an open form when the developer changes the previewed persona.
+if st.session_state.get("profile_context_user") != context_user_name:
+    st.session_state["profile_context_user"] = context_user_name
+    st.session_state.pop("nomination_type", None)
+    st.session_state.pop("show_review_queue", None)
 
 
 st.divider()
@@ -281,14 +398,16 @@ if role_code == "POD_LEAD":
     )
 
 
-self_request_allowed = True
+# Studio Lead self-request routing is not enabled until the business owner
+# identifies an approver above the Studio Lead.
+self_request_allowed = role_code in {"POD_MEMBER", "POD_LEAD"}
 
 pod_nomination_allowed = (
     role_code == "POD_LEAD"
     and active_member_count > 0
 )
 
-review_requests_allowed = role_code == "STUDIO_LEAD"
+review_requests_allowed = role_code in {"POD_LEAD", "STUDIO_LEAD"}
 
 
 action_one, action_two, action_three = st.columns(3)
@@ -317,14 +436,15 @@ with action_three:
 
 if self_request_clicked:
     st.session_state["nomination_type"] = "SELF"
+    st.session_state["show_review_queue"] = False
 
 if pod_nomination_clicked:
     st.session_state["nomination_type"] = "POD_MEMBER"
+    st.session_state["show_review_queue"] = False
 
 if review_requests_clicked:
-    st.info(
-        "The approval queue will be added in a later implementation step."
-    )
+    st.session_state.pop("nomination_type", None)
+    st.session_state["show_review_queue"] = True
 
 
 nomination_type = st.session_state.get("nomination_type")
@@ -332,39 +452,69 @@ nomination_type = st.session_state.get("nomination_type")
 
 if nomination_type in {"SELF", "POD_MEMBER"}:
     st.divider()
-    st.subheader("Choose a certification")
+    st.subheader("Create a certification request")
+
+    candidate_employee_id = profile["EMPLOYEE_ID"]
+    candidate_name = profile["EMPLOYEE_NAME"]
+    candidate_available = True
 
     if nomination_type == "SELF":
-        st.write(
-            f"Certification request for: {profile['EMPLOYEE_NAME']}"
-        )
+        st.write(f"Candidate: **{candidate_name}**")
     else:
-        st.write(
-            "Select the certification first. Pod-member selection will "
-            "be added in the next step."
+        eligible_members = load_eligible_pod_members(
+            profile["EMPLOYEE_ID"]
         )
+
+        if not eligible_members:
+            candidate_available = False
+            st.warning(
+                "No active members of your own Pod are available "
+                "for nomination."
+            )
+        else:
+            member_by_id = {
+                row["MEMBER_EMPLOYEE_ID"]: row
+                for row in eligible_members
+            }
+
+            selected_member_id = st.selectbox(
+                "Pod member",
+                options=list(member_by_id.keys()),
+                format_func=lambda employee_id: (
+                    f"{member_by_id[employee_id]['MEMBER_NAME']} - "
+                    f"{member_by_id[employee_id]['MEMBER_DESIGNATION']}"
+                ),
+                key=f"member_{context_user_name}",
+            )
+
+            selected_member = member_by_id[selected_member_id]
+            candidate_employee_id = selected_member_id
+            candidate_name = selected_member["MEMBER_NAME"]
+
+            st.caption(
+                f"Eligible member of {selected_member['POD_NAME']}"
+            )
 
     certification_rows = load_active_certifications()
 
     if not certification_rows:
-        st.warning(
-            "No active certifications are currently available."
-        )
-    else:
+        st.warning("No active certifications are currently available.")
+    elif candidate_available:
         certification_by_id = {
             row["CERTIFICATION_ID"]: row
             for row in certification_rows
         }
 
-        certification_options = list(certification_by_id.keys())
-
         selected_certification_id = st.selectbox(
             "Available certifications",
-            options=certification_options,
+            options=list(certification_by_id.keys()),
             format_func=lambda certification_id: (
                 certification_by_id[certification_id][
                     "CERTIFICATION_NAME"
                 ]
+            ),
+            key=(
+                f"certification_{context_user_name}_{nomination_type}"
             ),
         )
 
@@ -392,14 +542,10 @@ if nomination_type in {"SELF", "POD_MEMBER"}:
             ]
 
             if prerequisite_id:
-                prerequisite_name = certification_by_id.get(
-                    prerequisite_id,
-                    {},
-                )
-
+                prerequisite = certification_by_id.get(prerequisite_id)
                 prerequisite_value = (
-                    prerequisite_name["CERTIFICATION_NAME"]
-                    if prerequisite_name
+                    prerequisite["CERTIFICATION_NAME"]
+                    if prerequisite
                     else prerequisite_id
                 )
             else:
@@ -417,35 +563,234 @@ if nomination_type in {"SELF", "POD_MEMBER"}:
 
         if preview_active:
             st.warning(
-                "Persona Preview is active. You can review the catalogue, "
-                "but no nomination will be submitted."
+                "Persona Preview is active. You may inspect the complete "
+                "form, but submission is disabled because Preview is read-only."
             )
 
-        continue_column, cancel_column = st.columns(2)
+        with st.form(
+            key=f"nomination_form_{context_user_name}_{nomination_type}"
+        ):
+            date_one, date_two = st.columns(2)
 
-        with continue_column:
-            st.button(
-                "Continue",
-                disabled=True,
-                use_container_width=True,
-                help=(
-                    "Submission will be enabled after the nomination "
-                    "form is implemented."
+            with date_one:
+                preparation_start_date = st.date_input(
+                    "Preparation start date",
+                    value=date.today() + timedelta(days=1),
+                )
+
+            with date_two:
+                target_completion_date = st.date_input(
+                    "Target completion date",
+                    value=date.today() + timedelta(days=56),
+                )
+
+            request_notes = st.text_area(
+                "Notes (optional)",
+                placeholder=(
+                    "Add any information that the reviewer or candidate "
+                    "should know."
                 ),
+                max_chars=2000,
             )
 
-        with cancel_column:
-            if st.button(
-                "Cancel",
-                use_container_width=True,
-            ):
-                st.session_state.pop("nomination_type", None)
-                st.rerun()
+            submit_column, cancel_column = st.columns(2)
+
+            with submit_column:
+                submit_clicked = st.form_submit_button(
+                    "Submit Request",
+                    disabled=preview_active,
+                    use_container_width=True,
+                )
+
+            with cancel_column:
+                cancel_clicked = st.form_submit_button(
+                    "Cancel",
+                    use_container_width=True,
+                )
+
+        if cancel_clicked:
+            st.session_state.pop("nomination_type", None)
+            st.rerun()
+
+        if submit_clicked:
+            if target_completion_date <= preparation_start_date:
+                st.error(
+                    "The target completion date must be later than "
+                    "the preparation start date."
+                )
+            else:
+                try:
+                    submission_result = submit_nomination(
+                        nominator_employee_id=profile["EMPLOYEE_ID"],
+                        candidate_employee_id=candidate_employee_id,
+                        certification_id=selected_certification_id,
+                        preparation_start_date=preparation_start_date,
+                        target_completion_date=target_completion_date,
+                        request_notes=request_notes,
+                        created_by_snowflake_username=viewer_user_name,
+                    )
+
+                    if submission_result.get("SUCCESS"):
+                        st.success(submission_result["MESSAGE"])
+
+                        result_one, result_two, result_three = st.columns(3)
+
+                        with result_one:
+                            st.metric(
+                                "Candidate",
+                                candidate_name,
+                            )
+
+                        with result_two:
+                            st.metric(
+                                "Status",
+                                submission_result["STATUS"],
+                            )
+
+                        with result_three:
+                            st.metric(
+                                "Nomination ID",
+                                submission_result["NOMINATION_ID"],
+                            )
+                    else:
+                        st.error(submission_result["MESSAGE"])
+
+                except Exception as error:
+                    st.error(
+                        "The request could not be submitted. "
+                        f"Technical details: {error}"
+                    )
+
+
+if st.session_state.get("show_review_queue"):
+    st.divider()
+    st.subheader("Pending certification requests")
+
+    pending_reviews = load_pending_reviews(profile["EMPLOYEE_ID"])
+
+    if not pending_reviews:
+        st.info("You do not currently have any pending approval requests.")
+    else:
+        st.write(
+            f"{len(pending_reviews)} request(s) require your review."
+        )
+
+        if preview_active:
+            st.warning(
+                "Persona Preview is active. You may inspect the assigned "
+                "requests, but approval and rejection are disabled."
+            )
+
+        for request in pending_reviews:
+            expander_label = (
+                f"{request['CANDIDATE_NAME']} - "
+                f"{request['CERTIFICATION_NAME']}"
+            )
+
+            with st.expander(expander_label, expanded=True):
+                request_one, request_two, request_three = st.columns(3)
+
+                with request_one:
+                    st.metric(
+                        "Candidate",
+                        request["CANDIDATE_NAME"],
+                    )
+
+                with request_two:
+                    st.metric(
+                        "Certification",
+                        request["CERTIFICATION_NAME"],
+                    )
+
+                with request_three:
+                    st.metric(
+                        "Status",
+                        request["NOMINATION_STATUS"],
+                    )
+
+                st.write(f"**Requested by:** {request['NOMINATOR_NAME']}")
+                st.write(
+                    "**Preparation period:** "
+                    f"{request['PREPARATION_START_DATE']} to "
+                    f"{request['TARGET_COMPLETION_DATE']}"
+                )
+
+                if request["POD_NAME"]:
+                    st.write(f"**Pod:** {request['POD_NAME']}")
+
+                st.write(
+                    "**Request notes:** "
+                    f"{request['REQUEST_NOTES'] or 'No notes provided'}"
+                )
+
+                st.caption(
+                    f"Nomination ID: {request['NOMINATION_ID']}"
+                )
+
+                with st.form(
+                    key=f"decision_{request['NOMINATION_ID']}"
+                ):
+                    decision_notes = st.text_area(
+                        "Decision notes (optional)",
+                        max_chars=2000,
+                        key=f"notes_{request['NOMINATION_ID']}",
+                    )
+
+                    approve_column, reject_column = st.columns(2)
+
+                    with approve_column:
+                        approve_clicked = st.form_submit_button(
+                            "Approve",
+                            disabled=preview_active,
+                            use_container_width=True,
+                        )
+
+                    with reject_column:
+                        reject_clicked = st.form_submit_button(
+                            "Reject",
+                            disabled=preview_active,
+                            use_container_width=True,
+                        )
+
+                if approve_clicked or reject_clicked:
+                    decision = (
+                        "APPROVED" if approve_clicked else "REJECTED"
+                    )
+
+                    try:
+                        decision_result = decide_nomination(
+                            nomination_id=request["NOMINATION_ID"],
+                            reviewer_employee_id=profile["EMPLOYEE_ID"],
+                            decision=decision,
+                            decision_notes=decision_notes,
+                        )
+
+                        if decision_result.get("SUCCESS"):
+                            st.session_state["action_message"] = (
+                                f"Request {request['NOMINATION_ID']} was "
+                                f"{decision.lower()} successfully."
+                            )
+                            st.rerun()
+                        else:
+                            st.error(decision_result["MESSAGE"])
+
+                    except Exception as error:
+                        st.error(
+                            "The decision could not be recorded. "
+                            f"Technical details: {error}"
+                        )
+
+    if st.button(
+        "Close Pending Requests",
+        use_container_width=True,
+    ):
+        st.session_state["show_review_queue"] = False
+        st.rerun()
 
 
 if preview_active:
     st.caption(
-        "Preview note: these buttons validate visibility and access rules "
+        "Preview note: these controls validate visibility and access rules "
         "only. They do not create or update application records."
     )
 
@@ -470,12 +815,12 @@ elif role_code == "POD_LEAD":
 
 elif role_code == "STUDIO_LEAD":
     st.info(
-        "You can request a certification for yourself and review "
-        "requests routed to the Studio Lead."
+        "You can review certification requests routed to the Studio Lead. "
+        "Studio Lead self-request routing requires a separate business decision."
     )
 
 
 st.caption(
-    "This milestone validates user identity and permitted home-page actions. "
-    "The nomination forms and approval workflow are implemented separately."
+    "This milestone implements identity-aware certification requests, "
+    "own-Pod nomination controls and Snowflake-backed request storage."
 )
